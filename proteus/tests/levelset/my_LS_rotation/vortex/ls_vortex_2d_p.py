@@ -17,7 +17,8 @@ class init_cond:
         self.yc=0.75
     def uOfXT(self,x,t):
         #return self.radius - math.sqrt((x[0]-self.xc)**2 + (x[1]-self.yc)**2)
-        return smoothedHeaviside(epsFactHeaviside*he,self.radius - math.sqrt((x[0]-self.xc)**2 + (x[1]-self.yc)**2))
+        #return smoothedHeaviside(epsFactHeaviside*he,self.radius - math.sqrt((x[0]-self.xc)**2 + (x[1]-self.yc)**2))
+        return math.tanh((x[0]-self.xc))
 
 analyticalSolution = {0:init_cond(L)}
 
@@ -25,7 +26,6 @@ RD_model=None
 coefficients = MyCoefficients(epsFact=epsFactHeaviside,checkMass=checkMass,RD_model=RD_model,useMetrics=useMetrics,
                               EDGE_VISCOSITY=EDGE_VISCOSITY, 
                               ENTROPY_VISCOSITY=ENTROPY_VISCOSITY,
-                              POWER_SMOOTHNESS_INDICATOR=POWER_SMOOTHNESS_INDICATOR, 
                               LUMPED_MASS_MATRIX=LUMPED_MASS_MATRIX, 
                               FCT=FCT)
 

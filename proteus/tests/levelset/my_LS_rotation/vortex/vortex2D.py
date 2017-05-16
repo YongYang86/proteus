@@ -7,14 +7,13 @@ import math
 
 timeIntegration_ncls = "SSP33" 
 #timeIntegration_ncls = "FE" 
+lRefinement=3
 
-fullNewton=True
 # ENTROPY VISCOSITY 
 EDGE_VISCOSITY=1
 ENTROPY_VISCOSITY=1
-POWER_SMOOTHNESS_INDICATOR=1 #NOTE: for smooth profiles like dist function it is better to use 1
-LUMPED_MASS_MATRIX=0
-FCT=1
+LUMPED_MASS_MATRIX=1
+FCT=0
 # SHOCK CAPTURING PARAMETERS
 shockCapturingFactor_ncls=0.2
 # OTHER TIME PARAMETERS
@@ -23,13 +22,13 @@ if timeIntegration_ncls == "SSP33":
 else:
     timeOrder = 1
 
-runCFL = 0.1
+runCFL = 0.25
 lag_shockCapturing_ncls=True
 #if True uses PETSc solvers
 parallel = False
 linearSmoother = None
 #compute mass balance statistics or not
-checkMass=True
+checkMass=False
 #number of space dimensions
 nd=2
 #time integration, not relevant if using BDF with cfl timestepping
@@ -49,8 +48,7 @@ vortex_quad_order = 2*pDegree_ncls+1
 #parallel partitioning info
 from proteus import MeshTools
 partitioningType = MeshTools.MeshParallelPartitioningTypes.node
-#spatial mesh
-lRefinement=3
+
 #tag simulation name to level of refinement
 #soname="vortexcgp2_bdf2_mc"+`lRefinement`
 nn=nnx=nny=(2**lRefinement)*10+1
@@ -126,7 +124,7 @@ class MyCoefficients(NCLS.Coefficients):
         #self.ebqe_v[...,1]  =  2.0*pi*(x_boundary-0.5)
 
         #PERIODIC VORTEX
-        T=8
+        T=1
         self.q_v[...,0] = -2*np.sin(pi*y)*np.cos(pi*y)*np.sin(pi*x)**2*np.cos(pi*t/T)
         self.q_v[...,1] = 2*np.sin(pi*x)*np.cos(pi*x)*np.sin(pi*y)**2*np.cos(pi*t/T)        
         self.ebqe_v[...,0] = -2*np.sin(pi*y_boundary)*np.cos(pi*y_boundary)*np.sin(pi*x_boundary)**2*np.cos(pi*t/T)

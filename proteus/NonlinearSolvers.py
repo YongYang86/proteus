@@ -628,6 +628,20 @@ class Newton(NonlinearSolver):
             % (self.its,self.norm_r,(self.norm_r/(self.rtol_r*self.norm_r0+self.atol_r))),level=1)
         logEvent(memory("Newton","Newton"),level=4)
 
+class ExplicitLumpedMassMatrix(Newton):
+    """
+     This is a fake solver meant to be used with optimized code
+    A simple iterative solver that is Newton's method
+    if you give it the right Jacobian
+    """
+
+    def solve(self,u,r=None,b=None,par_u=None,par_r=None):                                  
+        self.computeResidual(u,r,b)
+        u[:] = r
+        self.F.auxiliaryCallCalculateResidual = True
+        self.computeResidual(u,r,b)
+        self.F.auxiliaryCallCalculateResidual = False
+
 import deim_utils
 class POD_Newton(Newton):
     """Newton's method on the reduced order system based on POD"""
@@ -2701,7 +2715,9 @@ def multilevelNonlinearSolverChooser(nonlinearOperatorList,
                                      maxLSits=100,
                                      parallelUsesFullOverlap = True,
                                      nonlinearSolverNorm = l2Norm):
-    if (multilevelNonlinearSolverType == Newton or
+    if (levelNonlinearSolverType == ExplicitLumpedMassMatrix):
+        levelNonlinearSolverType = ExplicitLumpedMassMatrix
+    elif (multilevelNonlinearSolverType == Newton or
         multilevelNonlinearSolverType == NLJacobi or
         multilevelNonlinearSolverType == NLGaussSeidel or
         multilevelNonlinearSolverType == NLStarILU):

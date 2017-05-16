@@ -52,11 +52,19 @@ class NumericalFlux(proteus.NumericalFlux.HamiltonJacobi_DiagonalLesaintRaviart)
 class RKEV(proteus.TimeIntegration.SSP33):
     """
     Wrapper for SSPRK time integration using EV
-
     ... more to come ...
     """
-    def __init__(self, transport, timeOrder=1, runCFL=0.1):
-        proteus.TimeIntegration.SSP33.__init__(self, transport,runCFL=runCFL)
+    def __init__(self, transport, timeOrder=1, runCFL=0.1, integrateInterpolationPoints=False):
+        BackwardEuler.__init__(self, transport,integrateInterpolationPoints=integrateInterpolationPoints)
+        self.runCFL=runCFL
+        self.dtLast=None
+        self.dtRatioMax = 2.
+        self.isAdaptive=True
+        # About the cfl 
+        assert hasattr(transport,'edge_based_cfl'), "No edge based cfl defined"
+        self.edge_based_cfl = transport.edge_based_cfl
+        self.cell_based_cfl = transport.q[('cfl',0)]
+        # Stuff particular for SSP33
         self.timeOrder = timeOrder  #order of approximation
         self.nStages = timeOrder  #number of stages total
         self.lstage = 0  #last stage completed
@@ -81,19 +89,14 @@ class RKEV(proteus.TimeIntegration.SSP33):
                 for k in range(self.nStages+1):                    
                     self.m_stage[ci].append(transport.q[('m',ci)].copy())
                     self.u_dof_stage[ci].append(transport.u[ci].dof.copy())
-        
-    #def set_dt(self, DTSET):
-    #    self.dt = DTSET #  don't update t
+
     def choose_dt(self):
         maxCFL = 1.0e-6
-        for ci in range(self.nc):
-            if self.cfl.has_key(ci):
-                maxCFL=max(maxCFL,globalMax(self.cfl[ci].max()))
+        maxCFL = max(maxCFL,globalMax(self.edge_based_cfl.max()))
+        # maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max()))
         self.dt = self.runCFL/maxCFL
         if self.dtLast == None:
             self.dtLast = self.dt
-        # mwf debug
-        print "RKEv max cfl component ci dt dtLast {0} {1} {2} {3}".format(maxCFL,ci,self.dt,self.dtLast)
         if self.dt/self.dtLast  > self.dtRatioMax:
             self.dt = self.dtLast*self.dtRatioMax
         self.t = self.tLast + self.dt
@@ -103,7 +106,8 @@ class RKEV(proteus.TimeIntegration.SSP33):
         Modify self.dt
         """
         self.tLast=t0
-        self.choose_dt()
+        self.dt = 1E-6
+        #self.choose_dt()
         self.t = t0+self.dt
  
     def setCoefficients(self):
@@ -165,8 +169,8 @@ class RKEV(proteus.TimeIntegration.SSP33):
                     self.transport.coefficients.u_dof_old = numpy.copy(self.u_dof_last[ci])
                     self.transport.u[ci].dof = numpy.copy(self.u_dof_stage[ci][self.lstage])
                     self.m_last[ci] = numpy.copy(self.m_last_save[ci])
-                    self.transport.getResidual(self.u_dof_stage[ci][self.lstage],
-                                               self.transport.globalResidualDummy)
+                    #self.transport.getResidual(self.u_dof_stage[ci][self.lstage],
+                    #                           self.transport.globalResidualDummy)
                     
         else:
             assert self.timeOrder == 1
@@ -174,8 +178,6 @@ class RKEV(proteus.TimeIntegration.SSP33):
                 self.m_stage[ci][self.lstage][:]=self.transport.q[('m',ci)][:]
                 self.u_dof_stage[ci][self.lstage][:] = self.transport.u[ci].dof[:]
  
-            
-
     def initializeTimeHistory(self,resetFromDOF=True):
         """
         Push necessary information into time history arrays
@@ -189,10 +191,6 @@ class RKEV(proteus.TimeIntegration.SSP33):
         """
         assumes successful step has been taken
         """
-        #mwf
-        #import pdb;
-        #pdb.set_trace()
-        
         self.t = self.tLast + self.dt
         for ci in range(self.nc):
             self.m_last[ci][:] = self.transport.q[('m',ci)][:]
@@ -234,10 +232,13 @@ class RKEV(proteus.TimeIntegration.SSP33):
                     self.m_stage[ci].append(self.transport.q[('m',ci)].copy())
                     self.u_dof_stage[ci].append(self.transport.u[ci].dof.copy())
         self.substeps = [self.t for i in range(self.nStages)]            
+
     def setFromOptions(self,nOptions):
         """
         allow classes to set various numerical parameters
         """
+        if 'runCFL' in dir(nOptions):
+            self.runCFL = nOptions.runCFL
         flags = ['timeOrder']
         for flag in flags:
             if flag in dir(nOptions):
@@ -254,7 +255,6 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
     def __init__(self,
                  EDGE_VISCOSITY=0, 
                  ENTROPY_VISCOSITY=0,
-                 POWER_SMOOTHNESS_INDICATOR=1, 
                  LUMPED_MASS_MATRIX=0,
                  FCT=0,
                  V_model=0,
@@ -300,7 +300,6 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         # mql added
         self.EDGE_VISCOSITY=EDGE_VISCOSITY
         self.ENTROPY_VISCOSITY=ENTROPY_VISCOSITY
-        self.POWER_SMOOTHNESS_INDICATOR=POWER_SMOOTHNESS_INDICATOR
         self.LUMPED_MASS_MATRIX=LUMPED_MASS_MATRIX
         self.FCT=FCT
 
@@ -466,6 +465,8 @@ class LevelModel(OneLevelTransport):
                  reuse_trial_and_test_quadrature=True,
                  sd = True,
                  movingDomain=False):
+
+        self.auxiliaryCallCalculateResidual=False
         #
         #set the objects describing the method and boundary conditions
         #
@@ -652,6 +653,7 @@ class LevelModel(OneLevelTransport):
         self.ebq_global={}
         self.ebqe={}
         self.phi_ip={}
+        self.edge_based_cfl = numpy.zeros(self.u[0].dof.shape)
         #mesh
         self.q['x'] = numpy.zeros((self.mesh.nElements_global,self.nQuadraturePoints_element,3),'d')
         self.ebqe['x'] = numpy.zeros((self.mesh.nExteriorElementBoundaries_global,self.nElementBoundaryQuadraturePoints_elementBoundary,3),'d')
@@ -733,7 +735,7 @@ class LevelModel(OneLevelTransport):
         self.min_u_bc=None
         self.max_u_bc=None
         # Aux quantity at DOFs to be filled by optimized code (MQL)
-        self.quantDOFs = numpy.zeros(self.u[0].dof.shape,'d')
+        self.quantDOFss = numpy.zeros(self.u[0].dof.shape,'d')
 
         comm = Comm.get()
         self.comm=comm
@@ -918,7 +920,7 @@ class LevelModel(OneLevelTransport):
         self.min_u_bc.fill(1E10);
         self.max_u_bc.fill(-1E10);
         self.flux_plus_dLij_times_soln = numpy.zeros(self.u[0].dof.shape,'d') # NOTE (mql): it is important to fill it with zeros
-        self.quantDOFs = numpy.zeros(self.u[0].dof.shape,'d')
+        self.quantDOFss = numpy.zeros(self.u[0].dof.shape,'d')
 
         #mwf debug
         #pdb.set_trace()        
@@ -945,6 +947,7 @@ class LevelModel(OneLevelTransport):
         except:
             pass
 
+        #self.ncls.calculateResidual_development(#element
         self.ncls.calculateResidual(#element
             self.u[0].femSpace.elementMaps.psi,
             self.u[0].femSpace.elementMaps.grad_psi,
@@ -990,6 +993,7 @@ class LevelModel(OneLevelTransport):
             self.q['dV'],
             self.q['dV_last'],
             self.q[('cfl',0)],
+            self.edge_based_cfl,
             self.shockCapturing.numDiff[0],
             self.shockCapturing.numDiff_last[0],
             self.offset[0],self.stride[0],
@@ -1015,18 +1019,24 @@ class LevelModel(OneLevelTransport):
             self.csrColumnOffsets[(0,0)], #column indices (convenient for element loops)
             self.csrColumnOffsets_eb[(0, 0)], #indices for boundary terms
             # PARAMETERS FOR 1st and 2nd ORDER MPP METHOD 
-            self.coefficients.POWER_SMOOTHNESS_INDICATOR, 
             self.coefficients.LUMPED_MASS_MATRIX,
             # FLUX CORRECTED TRANSPORT
             self.flux_plus_dLij_times_soln, 
             self.dL_minus_dE, 
             self.min_u_bc,
             self.max_u_bc, 
-            self.quantDOFs)
+            self.quantDOFss)
 
 	if self.forceStrongConditions:#
 	    for dofN,g in self.dirichletConditionsForceDOF.DOFBoundaryConditionsDict.iteritems():
                      r[dofN] = 0
+
+        if (self.auxiliaryCallCalculateResidual==False):
+            edge_based_cflMax=globalMax(self.edge_based_cfl.max())*self.timeIntegration.dt
+            cell_based_cflMax=globalMax(self.q[('cfl',0)].max())*self.timeIntegration.dt
+            logEvent("...   Current dt = " + str(self.timeIntegration.dt),level=4)
+            logEvent("...   Maximum Cell Based CFL = " + str(cell_based_cflMax),level=2)
+            logEvent("...   Maximum Edge Based CFL = " + str(edge_based_cflMax),level=2)
 
         #print "velocity in ncls",self.coefficients.q_v,
         #print "cfl",self.q[('cfl',0)]
@@ -1054,8 +1064,8 @@ class LevelModel(OneLevelTransport):
 
         #mwf debug
         #pdb.set_trace()
-        #cNCLS.calculateJacobian(self.mesh.nElements_global,
-        self.ncls.calculateJacobian(#element
+        self.ncls.calculateMassMatrix(#element
+        #self.ncls.calculateJacobian(#element
 	    self.u[0].femSpace.elementMaps.psi,
 	    self.u[0].femSpace.elementMaps.grad_psi,
 	    self.mesh.nodeArray,

@@ -4,14 +4,14 @@ from ls_vortex_2d_p import *
 from vortex2D import *
 nd = 2
 
-multilevelNonlinearSolver  = NLNI
-levelNonlinearSolver = Newton
-fullNewtonFlag = fullNewton
+multilevelNonlinearSolver  = Newton
+levelNonlinearSolver = ExplicitLumpedMassMatrix
+#levelNonlinearSolver = Newton
+fullNewtonFlag = False
 updateJacobian = False
 
 timeIntegration = NCLS.RKEV # SSP33 #mwf right now need timeIntegration to be SSP33 to run
-#timeIntegration = BackwardEuler_cfl
-stepController = Min_dt_cfl_controller
+stepController = Min_dt_controller
 
 if timeIntegration_ncls == "SSP33": #mwf hack
     timeOrder = 3

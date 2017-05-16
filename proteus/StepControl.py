@@ -697,6 +697,7 @@ class Min_dt_RKcontroller(SC_base):
         #pdb.set_trace()
         for m in self.model.levelModelList:
             m.timeIntegration.t = self.substeps[0]
+
 class Min_dt_cfl_controller(Min_dt_controller):
     def __init__(self,model,nOptions):
         Min_dt_controller.__init__(self,model,nOptions)
