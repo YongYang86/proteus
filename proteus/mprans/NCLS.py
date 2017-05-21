@@ -810,7 +810,6 @@ class LevelModel(OneLevelTransport):
         if self.forceStrongConditions:
             self.dirichletConditionsForceDOF = DOFBoundaryConditions(self.u[0].femSpace,dofBoundaryConditionsSetterDict[0],weakDirichletConditions=False)
 
-
         if self.movingDomain:
             self.MOVING_DOMAIN=1.0
         else:
@@ -884,6 +883,7 @@ class LevelModel(OneLevelTransport):
                                              self.q['abs(det(J))'],
                                              self.q[('w',0)],
                                              self.q[('w*dV_m',0)])
+        
         dm = numpy.ones(self.q[('u',0)].shape,'d')
         elementMassMatrix = numpy.zeros((self.mesh.nElements_global,
                                          self.nDOF_test_element[0],
@@ -911,7 +911,7 @@ class LevelModel(OneLevelTransport):
         self.ML = numpy.zeros((self.nFreeDOF_global[0],),'d')
         for i in range(self.nFreeDOF_global[0]):
             self.ML[i] = self.MC_a[rowptr[i]:rowptr[i+1]].sum()
-        numpy.testing.assert_almost_equal(self.ML.sum(), self.mesh.volume, err_msg="Trace of lumped mass matrix should be the domain volume",verbose=True)
+        #numpy.testing.assert_almost_equal(self.ML.sum(), self.mesh.volume, err_msg="Trace of lumped mass matrix should be the domain volume",verbose=True)
 
         # This is dummy. I just care about the csr structure of the sparse matrix
         self.dL_minus_dE = numpy.zeros(self.MC_global.shape,'d')

@@ -52,6 +52,7 @@ cdef extern from "VOF.h" namespace "proteus":
                                double* elementDiameter,
 			       int degree_polynomial,
                                double* u_dof,
+			       double* u_dof_lstage,
 			       double* u_dof_old,
 			       double* u_dof_old_old,
 			       double* velx_tn_dof, 
@@ -109,8 +110,6 @@ cdef extern from "VOF.h" namespace "proteus":
 			       double* dL_minus_dC,
 			       double* min_u_bc,
 			       double* max_u_bc,
-			       double* LumpedMassMatrix,
-			       double* MassMatrix,
 			       double* quantDOFs)
         void calculateJacobian(double* mesh_trial_ref,
                                double* mesh_grad_trial_ref,
@@ -254,6 +253,7 @@ cdef class cVOF_base:
                          numpy.ndarray elementDiameter,
 			 int degree_polynomial,
                          numpy.ndarray u_dof,
+                 	 numpy.ndarray u_dof_lstage,
                  	 numpy.ndarray u_dof_old,
                  	 numpy.ndarray u_dof_old_old,
 			 numpy.ndarray velx_tn_dof, 
@@ -310,8 +310,6 @@ cdef class cVOF_base:
 			 numpy.ndarray dL_minus_dC,
 			 numpy.ndarray min_u_bc,
 			 numpy.ndarray max_u_bc,
-			 numpy.ndarray LumpedMassMatrix, 
-			 numpy.ndarray MassMatrix,
 			 numpy.ndarray quantDOFs):	
        self.thisptr.calculateResidual(<double*> mesh_trial_ref.data,
                                        <double*> mesh_grad_trial_ref.data,
@@ -346,7 +344,8 @@ cdef class cVOF_base:
                                        <double*> elementDiameter.data,
 				       degree_polynomial,
                                        <double*> u_dof.data,
-				       <double*> u_dof_old.data,	
+				       <double*> u_dof_lstage.data,	
+				       <double*> u_dof_old.data,
 				       <double*> u_dof_old_old.data,
                                        <double*> velx_tn_dof.data,
                                        <double*> vely_tn_dof.data, #HACKED TO 2D FOR NOW (MQL)
@@ -403,8 +402,6 @@ cdef class cVOF_base:
 				       <double*> dL_minus_dC.data,
 				       <double*> min_u_bc.data,
 				       <double*> max_u_bc.data,
-				       <double*> LumpedMassMatrix.data,
-				       <double*> MassMatrix.data,
 				       <double*> quantDOFs.data)
    def calculateJacobian(self,
                          numpy.ndarray mesh_trial_ref,
