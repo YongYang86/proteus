@@ -2,21 +2,20 @@ from proteus import *
 from proteus.default_p import *
 from proteus.ctransportCoefficients import smoothedHeaviside
 from oneD_advection import *
-from proteus.mprans import VOF
-name=soname+"_vof"
+from proteus.mprans import NCLS
+name=soname+"_ncls"
 
 """
-VOF for 1D smooth and non smooth profiles
+NCLS for 1D smooth and non smooth profiles
 """
 
-LevelModelType = VOF.LevelModel
+LevelModelType = NCLS.LevelModel
 coefficients = MyCoefficients(epsFact=epsFactHeaviside,checkMass=checkMass,useMetrics=useMetrics,ME_model=0,
                               EDGE_VISCOSITY=EDGE_VISCOSITY,
                               ENTROPY_VISCOSITY=ENTROPY_VISCOSITY,
-                              POWER_SMOOTHNESS_INDICATOR=POWER_SMOOTHNESS_INDICATOR, 
                               LUMPED_MASS_MATRIX=LUMPED_MASS_MATRIX,
-                              FCT=FCT,
-                              cK=cK,cE=cE,cMax=cMax)
+                              FCT=FCT)
+
 
 def Heaviside(phi):
     if phi > 0:
