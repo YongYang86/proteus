@@ -677,7 +677,7 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
         #self.F.setUnknowns(self.F.timeIntegration.u)
         #self.F.coefficients.u_dof_old[:] = self.F.u[0].dof
 
-        self.F.uStar_dof[:] = self.F.coefficients.u_dof_old[:]
+        self.F.uStar_dof[:] = u
         # Set sparse factors to Jacobian
         self.computeResidual(u,r,b)
         if self.updateJacobian or self.fullNewton:            

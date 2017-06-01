@@ -7,7 +7,7 @@
 
 #define FIX_BOUNDARY_KUZMINS 1
 #define QUANTITIES_OF_INTEREST 0
-#define POWER_SMOOTHNESS_INDICATOR 2
+#define POWER_SMOOTHNESS_INDICATOR 1
 #define SATURATED_LEVEL_SET 1
 //#define sign(u,beta_coupez) (u > 0 ? 1. : -1.)*(u ==0 ? 0. : 1.)
 #define tol_sign 0.1
@@ -2414,8 +2414,6 @@ namespace proteus
 	    element_lumped_mass_matrix[nDOF_test_element];  
 	  register double  elementTransport[nDOF_test_element][nDOF_trial_element];
 	  register double  elementTransposeTransport[nDOF_test_element][nDOF_trial_element];
-	  //register double  elementTransportStar[nDOF_test_element][nDOF_trial_element];
-	  //register double  elementTransposeTransportStar[nDOF_test_element][nDOF_trial_element];
 	  //register double  preconditioned_elementTransport[nDOF_test_element][nDOF_trial_element];
 	  for (int i=0;i<nDOF_test_element;i++)
 	    {
@@ -2426,8 +2424,6 @@ namespace proteus
 		{
 		  elementTransport[i][j]=0.0;
 		  elementTransposeTransport[i][j]=0.0;
-		  //elementTransportStar[i][j]=0.0;
-		  //elementTransposeTransportStar[i][j]=0.0;
 		  // preconditioned elementTransport
 		  //preconditioned_elementTransport[i][j]=0.0;
 		}
@@ -2441,10 +2437,10 @@ namespace proteus
 		eN_nDOF_trial_element = eN*nDOF_trial_element;
 	      register double 
 		//for mass matrix contributions
-		u=0.0, m=0.0, dm=0.0, H=0.0, dH[nSpace], uStar=0.0, dHStar[nSpace],
+		u=0.0, m=0.0, dm=0.0, H=0.0, dH[nSpace], uStar=0.0,
 		u_test_dV[nDOF_trial_element], 
 		//for entropy viscosity
-		un=0.0, unm1=0.0, grad_u[nSpace], grad_un[nSpace], vn[nSpace], grad_uStar[nSpace],
+		un=0.0, unm1=0.0, grad_u[nSpace], grad_un[nSpace], vn[nSpace], 
 		u_grad_trial[nDOF_trial_element*nSpace],
 		//for general use
 		jac[nSpace*nSpace], jacDet, jacInv[nSpace*nSpace],
@@ -2455,7 +2451,7 @@ namespace proteus
 	      JacDet = fabs(jacDet);
 	      //get the solution (of Newton's solver). To compute time derivative term
 	      ck.valFromDOF(u_dof,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],u);
-	      ck.valFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],uStar);
+	      ck.valFromDOF(uStar_dof,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],uStar);
 	      //get the solution at quad point at tn and tnm1 for entropy viscosity
 	      // solution and grads at old times at quad points
 	      ck.valFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],un);
@@ -2464,7 +2460,6 @@ namespace proteus
 	      ck.gradTrialFromRef(&u_grad_trial_ref[k*nDOF_trial_element*nSpace],jacInv,u_grad_trial);
 	      ck.gradFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],u_grad_trial,grad_un);
 	      ck.gradFromDOF(u_dof,&u_l2g[eN_nDOF_trial_element],u_grad_trial,grad_u);
-	      ck.gradFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],u_grad_trial,grad_uStar);
 	      //precalculate test function products with integration weights for mass matrix terms
 	      for (int j=0;j<nDOF_trial_element;j++)
 		u_test_dV[j] = u_test_ref[k*nDOF_trial_element+j]*dV;
@@ -2478,10 +2473,11 @@ namespace proteus
 				   H,
 				   dH);
 
-	      double norm_grad_uStar = std::sqrt(std::pow(grad_uStar[0],2) + std::pow(grad_uStar[1],2)) + 1E-10;
-	      double dist_error = fabs(norm_grad_uStar - (1-SATURATED_LEVEL_SET*std::pow(uStar/beta_coupez,2)));
-	      dH[0] += dist_error*COUPEZ*lambda_coupez*sign(uStar,beta_coupez)*grad_uStar[0]/norm_grad_uStar;
-	      dH[1] += dist_error*COUPEZ*lambda_coupez*sign(uStar,beta_coupez)*grad_uStar[1]/norm_grad_uStar;
+	      double norm_grad_un = std::sqrt(std::pow(grad_un[0],2) + std::pow(grad_un[1],2)) + 1E-10;
+	      double dist_error = fabs(norm_grad_un - (1-SATURATED_LEVEL_SET*std::pow(un/beta_coupez,2)));
+
+	      dH[0] += dist_error*COUPEZ*lambda_coupez*sign(uStar,beta_coupez)*grad_un[0]/norm_grad_un;
+	      dH[1] += dist_error*COUPEZ*lambda_coupez*sign(uStar,beta_coupez)*grad_un[1]/norm_grad_un;
 
 	      //////////////////////////////
 	      // CALCULATE CELL BASED CFL //
@@ -2492,23 +2488,19 @@ namespace proteus
 	      // CALCULATE ENTROPY RESIDUAL AT QUAD POINT //
 	      //////////////////////////////////////////////
 	      double entropy_residual = ((un - unm1)/dt + dH[0]*grad_un[0] + dH[1]*grad_un[1]
-					 +dHStar[0]*grad_uStar[0] + dHStar[1]*grad_uStar[1]
 					 -dist_error*COUPEZ*lambda_coupez*sign(uStar,beta_coupez)
-					 *(1-SATURATED_LEVEL_SET*std::pow(uStar/beta_coupez,2)))*DENTROPY(un,-beta_coupez,beta_coupez);
+					 *(1-SATURATED_LEVEL_SET*std::pow(un/beta_coupez,2)))*DENTROPY(un,-beta_coupez,beta_coupez);
 	      //////////////
 	      // ith-LOOP //
 	      //////////////
-
-	      //double residual = (u-un) 
-		//+ dt*(dHStar[0]*grad_uStar[0] + dHStar[1]*grad_uStar[1])
-		//- dt*dist_error*COUPEZ*lambda_coupez*sign(uStar,beta_coupez)*(1-SATURATED_LEVEL_SET*std::pow(uStar/beta_coupez,2));
+	      double residual = (u-un) 
+		- dt*dist_error*COUPEZ*lambda_coupez*sign(uStar,beta_coupez)
+		*(1-SATURATED_LEVEL_SET*std::pow(un/beta_coupez,2));
 	      for(int i=0;i<nDOF_test_element;i++) 
 		{ 
 		  // lumped mass matrix
 		  element_lumped_mass_matrix[i] += u_test_dV[i];
-		  elementResidual_u[i] += (u-un)*u_test_dV[i]
-		    -dt*dist_error*COUPEZ*lambda_coupez*
-		    sign(uStar,beta_coupez)*(1-SATURATED_LEVEL_SET*std::pow(uStar/beta_coupez,2))*u_test_dV[i];
+		  elementResidual_u[i] += residual*u_test_dV[i];
 		  elementEntResVector[i] += entropy_residual*u_test_dV[i];
 		  
 		  ///////////////
@@ -2523,10 +2515,6 @@ namespace proteus
 			ck.HamiltonianJacobian_weak(dH,&u_grad_trial[j_nSpace],u_test_dV[i]);
 		      elementTransposeTransport[i][j] += // int[(vel.grad_wi)*wj*dx]
 			ck.HamiltonianJacobian_weak(dH,&u_grad_trial[i_nSpace],u_test_dV[j]);
-		      //elementTransportStar[i][j] += // int[(vel.grad_wj)*wi*dx]
-			  //ck.HamiltonianJacobian_weak(dHStar,&u_grad_trial[j_nSpace],u_test_dV[i]);
-		      //elementTransposeTransportStar[i][j] += // int[(vel.grad_wi)*wj*dx]
-			  //ck.HamiltonianJacobian_weak(dHStar,&u_grad_trial[i_nSpace],u_test_dV[j]);
 		    }
 		}//i
 	      //save solution for other models 
@@ -2566,8 +2554,7 @@ namespace proteus
 	      int gi = offset_u+stride_u*u_l2g[eN_i]; //global i-th index
 	      
 	      // distribute lumped mass matrix
-	      lumped_mass_matrix[gi]  += element_lumped_mass_matrix[i];
-	      
+	      lumped_mass_matrix[gi]  += element_lumped_mass_matrix[i];	      
 	      // distribute global residual for (lumped) mass matrix
 	      globalResidual[gi] += elementResidual_u[i];
 	      // distribute EntResVector 
@@ -2580,11 +2567,6 @@ namespace proteus
 		    += elementTransport[i][j];
 		  TransposeTransportMatrix[csrRowIndeces_CellLoops[eN_i] + csrColumnOffsets_CellLoops[eN_i_j]] 
 		    += elementTransposeTransport[i][j];
-		  // star matrices
-		  //TransportStarMatrix[csrRowIndeces_CellLoops[eN_i] + csrColumnOffsets_CellLoops[eN_i_j]] 
-		  //+= elementTransportStar[i][j];
-		  //TransposeTransportStarMatrix[csrRowIndeces_CellLoops[eN_i] + csrColumnOffsets_CellLoops[eN_i_j]] 
-		  //+= elementTransposeTransportStar[i][j];
 		}//j
 	    }//i
 	}//elements
@@ -2641,11 +2623,8 @@ namespace proteus
       for (int i=0; i<numDOFs; i++)
 	{
 	  double solni = u_dof_old[i]; // solution at time tn for the ith DOF
-	  //double solStari = uStar_dof[i];
 	  double ith_dissipative_term = 0;
-	  //double ith_dissipativeStar_term = 0;
 	  double ith_flux_term = 0;
-	  //double ith_fluxStar_term = 0;
 	  double dLii = 0.;
 
 	  double one_over_entNormFactori = etaMax[i] == etaMin[i] ? 0. : 1./(etaMax[i]-etaMin[i]);	  
@@ -2655,29 +2634,22 @@ namespace proteus
 	    {
 	      int j = csrColumnOffsets_DofLoops[offset];
 	      double solnj = u_dof_old[j]; // solution at time tn for the jth DOF
-	      //double solStarj = uStar_dof[j]; // solution at time tn for the jth DOF
 	      double dLij=0.;
-	      //double dLStarij=0.;
 
 	      ith_flux_term += TransportMatrix[ij]*solnj;
-	      //ith_fluxStar_term += TransportStarMatrix[ij]*solStarj;
 	      if (i != j) //NOTE: there is really no need to check for i!=j (see formula for ith_dissipative_term)
 		{
 		  // first-order dissipative operator
-		  //dLij = std::max(0.0,std::max(TransportMatrix[ij],TransposeTransportMatrix[ij]));
 		  dLij = std::max(fabs(TransportMatrix[ij]),fabs(TransposeTransportMatrix[ij]));
-		  //dLStarij = std::max(fabs(TransportStarMatrix[ij]),fabs(TransposeTransportStarMatrix[ij]));
 		  // weight low-order dissipative matrix to make it higher order
 		  dLij *= std::max(psi[i],psi[j]); 
-		  //dLStarij *= std::max(psi[i],psi[j]); 
 		  // high-order (entropy viscosity) dissipative operator 		  
 		  double one_over_entNormFactorj = etaMax[j] == etaMin[j] ? 0. : 1./(etaMax[j]-etaMin[j]);
 		  double dEVij = fmax(std::abs(global_entropy_residual[i])*one_over_entNormFactori,
-				       std::abs(global_entropy_residual[j])*one_over_entNormFactorj);
+				      std::abs(global_entropy_residual[j])*one_over_entNormFactorj);
 		  //dissipative terms
 		  ith_dissipative_term += fmin(dLij,cE*dEVij)*(solnj-solni);
-		  //ith_dissipativeStar_term += fmin(dLStarij,cE*dEVij)*(solStarj-solStari);
-		  //ith_dissipative_term += dLij*(solnj-solni);		  
+		  //ith_dissipative_term += dLij*(solnj-solni);
 		  dLii -= dLij;
 		}
 	      //update ij
@@ -2692,7 +2664,6 @@ namespace proteus
 	    //globalResidual[i] = mi*(u_dof[i] - u_dof_old[i]) + dt*(ith_flux_term - ith_dissipative_term);
 	    globalResidual[i] = u_dof_old[i] - dt/mi*(ith_flux_term - ith_dissipative_term);
 	  else
-	    //globalResidual[i] += dt*(ith_flux_term + ith_fluxStar_term - ith_dissipative_term - ith_dissipativeStar_term); 
 	    globalResidual[i] += dt*(ith_flux_term - ith_dissipative_term);
 	}
 
@@ -3736,9 +3707,9 @@ namespace proteus
 		      int j_nSpace = j*nSpace;
 		      int i_nSpace = i*nSpace;
 		      elementJacobian_u_u[i][j] += 
-			dt*ck.MassJacobian_weak(dm_t,u_trial_ref[k*nDOF_trial_element+j],u_test_dV[i]);
-		      //+ 0*std::pow(beta_coupez,2)*(u_grad_trial[i*nSpace+0]*u_grad_test_dV[j*nSpace+0] 
-		      //			     +u_grad_trial[i*nSpace+1]*u_grad_test_dV[j*nSpace+1]);
+			dt*ck.MassJacobian_weak(dm_t,u_trial_ref[k*nDOF_trial_element+j],u_test_dV[i])
+			+ std::pow(beta_coupez,2)*(u_grad_trial[i*nSpace+0]*u_grad_test_dV[j*nSpace+0] 
+						   +u_grad_trial[i*nSpace+1]*u_grad_test_dV[j*nSpace+1]);
 		    }//j
 		}//i
 	    }//k
