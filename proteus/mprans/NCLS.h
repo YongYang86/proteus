@@ -65,6 +65,7 @@ namespace proteus
 					  double* nodeDiametersArray,
 					  double* u_dof,
 					  double* u_dof_old,	
+					  double* uStar_dof,
 					  int offset_u, int stride_u, 
 					  double* globalResidual,
 					  // PARAMETERS FOR EDGE BASED STABILIZATION
@@ -722,6 +723,7 @@ namespace proteus
 				  double* nodeDiametersArray,
 				  double* u_dof,
 				  double* u_dof_old,	
+				  double* uStar_dof,
 				  int offset_u, int stride_u, 
 				  double* globalResidual,
 				  // PARAMETERS FOR EDGE BASED STABILIZATION
@@ -786,7 +788,7 @@ namespace proteus
 		eN_k_nSpace = eN_k*nSpace,
 		eN_nDOF_trial_element = eN*nDOF_trial_element;
 	      register double 
-		hquad=0.0, u=0.0, u_test_dV[nDOF_trial_element], 
+		hquad=0.0, u=0.0, u_test_dV[nDOF_trial_element], uStar=0.0,
 		//for entropy viscosity
 		un=0.0, grad_u[nSpace], grad_un[nSpace], vn[nSpace], 
 		u_grad_trial[nDOF_trial_element*nSpace],
@@ -798,6 +800,8 @@ namespace proteus
 	      dV = fabs(jacDet)*dV_ref[k];
 	      // get h at quad points
 	      ck.valFromDOF(nodeDiametersArray,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],hquad);
+	      // get the star solution at quad points
+	      ck.valFromDOF(uStar_dof,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],uStar);
 	      //get the solution at quad points
 	      ck.valFromDOF(u_dof,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],u);
 	      //get the solution at quad point at tn 
@@ -814,19 +818,20 @@ namespace proteus
 	      double norm_grad_u = std::sqrt(std::pow(grad_u[0],2) + std::pow(grad_u[1],2));
 	      double dist_error = norm_grad_u - (1-SATURATED_LEVEL_SET*std::pow(u/beta_coupez,2));
 
-	      vn[0] = lambda_coupez*sign(un,beta_coupez)*grad_un[0]/norm_grad_un;
-	      vn[1] = lambda_coupez*sign(un,beta_coupez)*grad_un[1]/norm_grad_un;
+	      vn[0] = lambda_coupez*sign(uStar,beta_coupez)*grad_un[0]/norm_grad_un;
+	      vn[1] = lambda_coupez*sign(uStar,beta_coupez)*grad_un[1]/norm_grad_un;
 	      
 	      //////////////
 	      // ith-LOOP //
 	      //////////////
+	      double residual = (u-un) 
+		- dt*lambda_coupez*sign(uStar,beta_coupez)*(1-SATURATED_LEVEL_SET*std::pow(un/beta_coupez,2));
 	      for(int i=0;i<nDOF_test_element;i++) 
 		{ 
 		  // lumped mass matrix
 		  element_lumped_mass_matrix[i] += u_test_dV[i];
 
-		  elementResidual_u[i] += (u-un)*u_test_dV[i] - dt*lambda_coupez*sign(un,beta_coupez)
-		    *(1-SATURATED_LEVEL_SET*std::pow(un/beta_coupez,2))*u_test_dV[i];
+		  elementResidual_u[i] += residual*u_test_dV[i];
 		  element_L2_norm_per_node[i] += dist_error*u_test_dV[i];
 		  ///////////////
 		  // j-th LOOP // To construct transport matrices
@@ -2650,7 +2655,8 @@ namespace proteus
 		  //dissipative terms
 		  ith_dissipative_term += fmin(dLij,cE*dEVij)*(solnj-solni);
 		  //ith_dissipative_term += dLij*(solnj-solni);
-		  dLii -= dLij;
+		  //dLii -= dLij;
+		  dLii -= fmin(dLij,cE*dEVij);
 		}
 	      //update ij
 	      ij+=1;
@@ -3708,8 +3714,8 @@ namespace proteus
 		      int i_nSpace = i*nSpace;
 		      elementJacobian_u_u[i][j] += 
 			dt*ck.MassJacobian_weak(dm_t,u_trial_ref[k*nDOF_trial_element+j],u_test_dV[i])
-			+ std::pow(beta_coupez,2)*(u_grad_trial[i*nSpace+0]*u_grad_test_dV[j*nSpace+0] 
-						   +u_grad_trial[i*nSpace+1]*u_grad_test_dV[j*nSpace+1]);
+			+ std::pow(beta_coupez/2.,2)*(u_grad_trial[i*nSpace+0]*u_grad_test_dV[j*nSpace+0] 
+						      +u_grad_trial[i*nSpace+1]*u_grad_test_dV[j*nSpace+1]);
 		    }//j
 		}//i
 	    }//k

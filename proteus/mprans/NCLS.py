@@ -93,12 +93,14 @@ class RKEV(proteus.TimeIntegration.SSP33):
     def choose_dt(self):        
         maxCFL = 1.0e-6
         maxCFL = max(maxCFL,globalMax(self.edge_based_cfl.max()))
-        # maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max()))
+        #maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max())) #FOR SUPG
         self.dt = self.runCFL/maxCFL
         if self.dtLast == None:
             self.dtLast = self.dt
         if self.dt/self.dtLast  > self.dtRatioMax:
             self.dt = self.dtLast*self.dtRatioMax            
+
+        #self.dt = 3.E-3 #FOR SUPG
         self.t = self.tLast + self.dt
         self.substeps = [self.t for i in range(self.nStages)] #Manuel is ignoring different time step levels for now        
     def initialize_dt(self,t0,tOut,q):
@@ -254,7 +256,7 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
 
     def __init__(self,
                  pure_redistancing=False,
-                 maxIter_redistancing=100,
+                 maxIter_redistancing=10,
                  redistancing_tolerance=0.1, #relative to he
                  EDGE_VISCOSITY=0, 
                  ENTROPY_VISCOSITY=0,
@@ -918,6 +920,7 @@ class LevelModel(OneLevelTransport):
             #degree_polynomial,
             self.u[0].dof,
 	    self.coefficients.u_dof_old,
+            self.uStar_dof,
 	    #self.coefficients.u_dof_old_old,
             #self.coefficients.q_v,
             #self.timeIntegration.m_tmp[0],
@@ -1190,7 +1193,7 @@ class LevelModel(OneLevelTransport):
         except:
             pass
 
-        #self.ncls.calculateResidual_development(#element
+        #self.ncls.calculateResidual_development(#element #For SUPG
         self.ncls.calculateResidual(#element
             self.u[0].femSpace.elementMaps.psi,
             self.u[0].femSpace.elementMaps.grad_psi,
@@ -1387,7 +1390,7 @@ class LevelModel(OneLevelTransport):
         #mwf debug
         #pdb.set_trace()
         self.ncls.calculateMassMatrix(#element
-        #self.ncls.calculateJacobian(#element
+        #self.ncls.calculateJacobian(#element #FOR SUPG
 	    self.u[0].femSpace.elementMaps.psi,
 	    self.u[0].femSpace.elementMaps.grad_psi,
 	    self.mesh.nodeArray,

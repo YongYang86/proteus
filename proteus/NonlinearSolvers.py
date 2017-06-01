@@ -709,36 +709,36 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
         ############################
         ##### Do re-distancing #####
         ############################
-        #self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
-        #if(True):
-        #    if (self.F.coefficients.pure_redistancing==True):                
-        #        self.F.edge_based_cfl.fill(self.F.coefficients.cfl_redistancing/self.F.dt_redistancing)
-        #        self.F.coefficients.maxIter_redistancing=1
-        #    logEvent("***** Starting re-distancing *****",2)
-        #    numIter=0
-        #    while (self.F.L2_norm_redistancing > self.F.coefficients.redistancing_tolerance 
-        #           and numIter < self.F.coefficients.maxIter_redistancing):
-        #        self.F.coefficients.u_dof_old = numpy.copy(self.F.u[0].dof)
-        #        self.F.getRedistancingResidual(u,r)
-        #        if self.updateJacobian or self.fullNewton:
-        #            self.updateJacobian = False
-        #            self.F.getJacobian(self.J)
-        #            self.linearSolver.prepare(b=r)
-        #        self.du[:]=0.0
-        #        if not self.directSolver:
-        #            if self.EWtol:
-        #                self.setLinearSolverTolerance(r)
-        #        if not self.linearSolverFailed:
-        #            self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
-        #            self.linearSolverFailed = self.linearSolver.failed()
-        #        u-=self.du
-        #        self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
-        #        self.F.redistancing_L2_norm_history.append((self.F.timeIntegration.t,self.F.L2_norm_redistancing))
-        #        numIter += 1        
-        #    logEvent("***** Re-distancing finished. Number of iterations = "+str(numIter)
-        #             + ". L2 norm of error: "+str(self.F.L2_norm_redistancing)
-        #             + ". Tolerance: "+str(self.F.coefficients.redistancing_tolerance)
-        #             ,2)        
+        logEvent("***** Starting re-distancing *****",2)
+        numIter=0
+        self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
+        if(True):
+            if (self.F.coefficients.pure_redistancing==True):                
+                self.F.edge_based_cfl.fill(self.F.coefficients.cfl_redistancing/self.F.dt_redistancing)
+                self.F.coefficients.maxIter_redistancing=1
+            while (self.F.L2_norm_redistancing > self.F.coefficients.redistancing_tolerance 
+                   and numIter < self.F.coefficients.maxIter_redistancing):
+                self.F.coefficients.u_dof_old = numpy.copy(self.F.u[0].dof)
+                self.F.getRedistancingResidual(u,r)
+                if self.updateJacobian or self.fullNewton:
+                    self.updateJacobian = False
+                    self.F.getJacobian(self.J)
+                    self.linearSolver.prepare(b=r)
+                self.du[:]=0.0
+                if not self.directSolver:
+                    if self.EWtol:
+                        self.setLinearSolverTolerance(r)
+                if not self.linearSolverFailed:
+                    self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+                    self.linearSolverFailed = self.linearSolver.failed()
+                u-=self.du
+                self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
+                self.F.redistancing_L2_norm_history.append((self.F.timeIntegration.t,self.F.L2_norm_redistancing))
+                numIter += 1        
+        logEvent("***** Re-distancing finished. Number of iterations = "+str(numIter)
+                 + ". L2 norm of error: "+str(self.F.L2_norm_redistancing)
+                 + ". Tolerance: "+str(self.F.coefficients.redistancing_tolerance)
+                 ,2)        
         
 import deim_utils
 class POD_Newton(Newton):
