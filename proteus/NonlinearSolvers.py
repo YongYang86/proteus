@@ -39,7 +39,7 @@ class NonlinearEquation:
         pass
 
     def getJacobian(jacobian,usePicard=False):
-        """"""
+        ""
         pass
 
     def resetNonlinearFunctionStatistics(self):
@@ -549,7 +549,7 @@ class Newton(NonlinearSolver):
     #                 while ( (norm_r_cur >= 0.99 * self.norm_r + self.atol_r) and
     #                         (ls_its < self.maxLSits) and
     #                         norm_r_cur/norm_r_last < 1.0):
-                if norm_r_cur > self.rtol_r*self.norm_r0 + self.atol_r:#make sure hasn't converged already
+                if norm_r_cur > self.rtol_r*self.norm_r0 + self.atol_r:#make sure hasnt converged already
                     while ( (norm_r_cur >= 0.9999 * self.norm_r) and
                             (ls_its < self.maxLSits)):
                         self.convergingIts = 0
@@ -642,6 +642,104 @@ class ExplicitLumpedMassMatrix(Newton):
         self.computeResidual(u,r,b)
         self.F.auxiliaryCallCalculateResidual = False
 
+class ExplicitConsistentMassMatrixWithRedistancing(Newton):
+    """
+     This is a fake solver meant to be used with optimized code
+    A simple iterative solver that is Newton's method
+    if you give it the right Jacobian
+    """
+    def solve(self,u,r=None,b=None,par_u=None,par_r=None):
+        self.F.getRhsSmoothing(u,r)
+        if (self.F.SmoothingMatrix == None):
+            import copy
+            self.F.getSmoothingMatrix()
+            self.linearSolver.L = self.F.SmoothingMatrix          
+            #Save sparse factor for Jacobian
+            self.F.Jacobian_sparseFactor = self.linearSolver.sparseFactor
+            #create a new sparse factor. For now use the same as the Jacobian
+            self.F.SmoothingMatrix_sparseFactor = superluWrappers.SparseFactor(self.linearSolver.n)
+            #reference the self.linearSolver.sparseFactor to use the new sparse Factor
+            self.linearSolver.sparseFactor = self.F.SmoothingMatrix_sparseFactor
+            #Compute the new sparse factor; i.e., self.F.SmoothingMatrix_sparseFactor
+            self.linearSolver.prepare(b=r)
+        self.du[:]=0        
+        # Set sparse factors
+        self.linearSolver.L = self.F.SmoothingMatrix          
+        self.linearSolver.sparseFactor = self.F.SmoothingMatrix_sparseFactor
+        if not self.directSolver:
+            if self.EWtol:
+                self.setLinearSolverTolerance(r)
+        if not self.linearSolverFailed:
+            self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+            self.linearSolverFailed = self.linearSolver.failed()
+        u[:]=self.du
+        #self.F.getRhsSmoothing(u,r)
+        #self.F.setUnknowns(self.F.timeIntegration.u)
+        #self.F.coefficients.u_dof_old[:] = self.F.u[0].dof
+
+        self.F.uStar_dof[:] = self.F.coefficients.u_dof_old[:]
+        # Set sparse factors to Jacobian
+        self.computeResidual(u,r,b)
+        if self.updateJacobian or self.fullNewton:            
+            self.F.getJacobian(self.J)
+            # set linear solver to be the jacobian
+            self.linearSolver.L = self.J
+            # set space factors to be the jacobian factor 
+            self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
+            self.linearSolver.prepare(b=r)
+            self.updateJacobian = False
+        self.du[:]=0.0
+        # Set sparse factors 
+        self.linearSolver.L = self.J
+        self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
+        if not self.directSolver:
+            if self.EWtol:
+                self.setLinearSolverTolerance(r)
+        if not self.linearSolverFailed:
+            self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+            self.linearSolverFailed = self.linearSolver.failed()
+        u-=self.du
+        
+        # DISTRIBUTE SOLUTION FROM u to u[ci].dof
+        #self.F.auxiliaryCallCalculateResidual = True
+        #self.computeResidual(u,r,b)
+        #self.F.auxiliaryCallCalculateResidual = False
+        self.F.setUnknowns(self.F.timeIntegration.u)
+
+        ############################
+        ##### Do re-distancing #####
+        ############################
+        #self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
+        #if(True):
+        #    if (self.F.coefficients.pure_redistancing==True):                
+        #        self.F.edge_based_cfl.fill(self.F.coefficients.cfl_redistancing/self.F.dt_redistancing)
+        #        self.F.coefficients.maxIter_redistancing=1
+        #    logEvent("***** Starting re-distancing *****",2)
+        #    numIter=0
+        #    while (self.F.L2_norm_redistancing > self.F.coefficients.redistancing_tolerance 
+        #           and numIter < self.F.coefficients.maxIter_redistancing):
+        #        self.F.coefficients.u_dof_old = numpy.copy(self.F.u[0].dof)
+        #        self.F.getRedistancingResidual(u,r)
+        #        if self.updateJacobian or self.fullNewton:
+        #            self.updateJacobian = False
+        #            self.F.getJacobian(self.J)
+        #            self.linearSolver.prepare(b=r)
+        #        self.du[:]=0.0
+        #        if not self.directSolver:
+        #            if self.EWtol:
+        #                self.setLinearSolverTolerance(r)
+        #        if not self.linearSolverFailed:
+        #            self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+        #            self.linearSolverFailed = self.linearSolver.failed()
+        #        u-=self.du
+        #        self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
+        #        self.F.redistancing_L2_norm_history.append((self.F.timeIntegration.t,self.F.L2_norm_redistancing))
+        #        numIter += 1        
+        #    logEvent("***** Re-distancing finished. Number of iterations = "+str(numIter)
+        #             + ". L2 norm of error: "+str(self.F.L2_norm_redistancing)
+        #             + ". Tolerance: "+str(self.F.coefficients.redistancing_tolerance)
+        #             ,2)        
+        
 import deim_utils
 class POD_Newton(Newton):
     """Newton's method on the reduced order system based on POD"""
@@ -2717,6 +2815,8 @@ def multilevelNonlinearSolverChooser(nonlinearOperatorList,
                                      nonlinearSolverNorm = l2Norm):
     if (levelNonlinearSolverType == ExplicitLumpedMassMatrix):
         levelNonlinearSolverType = ExplicitLumpedMassMatrix
+    elif (levelNonlinearSolverType == ExplicitConsistentMassMatrixWithRedistancing):
+        levelNonlinearSolverType = ExplicitConsistentMassMatrixWithRedistancing
     elif (multilevelNonlinearSolverType == Newton or
         multilevelNonlinearSolverType == NLJacobi or
         multilevelNonlinearSolverType == NLGaussSeidel or
