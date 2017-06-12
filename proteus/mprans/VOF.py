@@ -60,6 +60,10 @@ class RKEV(proteus.TimeIntegration.SSP33):
         self.timeOrder = timeOrder  #order of approximation
         self.nStages = timeOrder  #number of stages total
         self.lstage = 0  #last stage completed
+        # About the cfl 
+        assert hasattr(transport,'edge_based_cfl'), "No edge based cfl defined"
+        self.edge_based_cfl = transport.edge_based_cfl
+        self.cell_based_cfl = transport.q[('cfl',0)]
         # storage vectors
         # previous time step mass and solution dof per component
         self.m_last = {}
@@ -86,14 +90,11 @@ class RKEV(proteus.TimeIntegration.SSP33):
     #    self.dt = DTSET #  don't update t
     def choose_dt(self):
         maxCFL = 1.0e-6
-        for ci in range(self.nc):
-            if self.cfl.has_key(ci):
-                maxCFL=max(maxCFL,globalMax(self.cfl[ci].max()))
+        #maxCFL = max(maxCFL,globalMax(self.edge_based_cfl.max()))
+        maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max())) #FOR SUPG
         self.dt = self.runCFL/maxCFL
         if self.dtLast == None:
             self.dtLast = self.dt
-        # mwf debug
-        print "RKEv max cfl component ci dt dtLast {0} {1} {2} {3}".format(maxCFL,ci,self.dt,self.dtLast)
         if self.dt/self.dtLast  > self.dtRatioMax:
             self.dt = self.dtLast*self.dtRatioMax
         self.t = self.tLast + self.dt
@@ -102,8 +103,9 @@ class RKEV(proteus.TimeIntegration.SSP33):
         """
         Modify self.dt
         """
+        self.dt=1E-6
         self.tLast=t0
-        self.choose_dt()
+        #self.choose_dt()
         self.t = t0+self.dt
  
     def setCoefficients(self):
@@ -257,14 +259,13 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
     def __init__(self,
                  EDGE_VISCOSITY=0,
                  ENTROPY_VISCOSITY=0,
-                 POWER_SMOOTHNESS_INDICATOR=2,
                  LUMPED_MASS_MATRIX=0,
                  FCT=0,
                  # FOR LOG BASED ENTROPY FUNCTION
                  uL=0.0, 
                  uR=1.0,
                  # FOR ARTIFICIAL COMPRESSION
-                 cK=0.25,
+                 cK=1.0,
                  # FOR IMPOSING DIRICHLET BCs STRONGLY
                  forceStrongConditions=0,
                  # FOR ELEMENT BASED ENTROPY VISCOSITY
@@ -321,7 +322,6 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         # EDGE BASED (AND ENTROPY) VISCOSITY 
         self.EDGE_VISCOSITY=EDGE_VISCOSITY
         self.ENTROPY_VISCOSITY=ENTROPY_VISCOSITY
-        self.POWER_SMOOTHNESS_INDICATOR=POWER_SMOOTHNESS_INDICATOR
         self.LUMPED_MASS_MATRIX=LUMPED_MASS_MATRIX
         self.FCT=FCT
         self.uL=uL
@@ -338,9 +338,6 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         self.model = modelList[self.modelIndex]
         self.u_dof_old = numpy.copy(self.model.u[0].dof)
         self.u_dof_old_old = numpy.copy(self.model.u[0].dof)
-        #Velocities for edge viscosity (MQL)
-        self.velx_tn_dof = numpy.zeros(self.model.u[0].dof.shape,'d')
-        self.vely_tn_dof = numpy.zeros(self.model.u[0].dof.shape,'d')
         #redistanced level set
         if self.RD_modelIndex is not None:
             self.rdModel = modelList[self.RD_modelIndex]
@@ -357,19 +354,12 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         #print "flow model index------------",self.flowModelIndex,modelList[self.flowModelIndex].q.has_key(('velocity',0))        
 
         if self.flowModelIndex is not None:
-            self.velx_tn_dof = modelList[self.flowModelIndex].u[0].dof #NOTE: this is not a copy. It is a reference 
-            self.vely_tn_dof = modelList[self.flowModelIndex].u[1].dof
-            self.velz_tn_dof = modelList[self.flowModelIndex].u[2].dof
-
             if modelList[self.flowModelIndex].q.has_key(('velocity',0)):
                 self.q_v = modelList[self.flowModelIndex].q[('velocity',0)]
                 self.ebqe_v = modelList[self.flowModelIndex].ebqe[('velocity',0)]
                 #self.ux_dof = modelList[solf.flowModelIndex].u[1].dof
                 #self.uy_dof = modelList[solf.flowModelIndex].u[2].dof
                 #self.uz_dof = modelList[solf.flowModelIndex].u[3].dof
-                # Take divergence from velocity model 
-                self.q_div_velocity = modelList[self.V_model].q['div_velocity']
-                self.ebqe_div_velocity = modelList[self.V_model].ebqe['div_velocity']
             else:
                 self.q_v = modelList[self.flowModelIndex].q[('f',0)]
                 self.ebqe_v = modelList[self.flowModelIndex].ebqe[('f',0)]
@@ -382,16 +372,6 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
             else:
                 if modelList[self.flowModelIndex].ebq.has_key(('f',0)):
                     self.ebq_v = modelList[self.flowModelIndex].ebq[('f',0)]
-        else:
-            # Then it is assumed that the velocity is in the same space as the VOF solution
-            self.velx_tn_dof = numpy.zeros(self.model.u[0].dof.shape,'d')
-            self.vely_tn_dof = numpy.zeros(self.model.u[0].dof.shape,'d')
-            self.velz_tn_dof = numpy.zeros(self.model.u[0].dof.shape,'d')
-
-            # If no velocity model I assume the vel field is div free 
-            self.q_div_velocity = numpy.zeros(self.model.q[('u', 0)].shape,'d')
-            self.ebqe_div_velocity = numpy.zeros(self.model.ebqe[('u', 0)].shape,'d')
-
         #
         if self.eikonalSolverFlag == 2: #FSW
             self.resDummy = numpy.zeros(self.model.u[0].dof.shape,'d')
@@ -484,8 +464,8 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         return copyInstructions
     def postStep(self,t,firstStep=False):
         if (self.FCT==1 and False):
-            self.model.FCTStep()
-        self.model.q['dV_last'][:] = self.model.q['dV']
+            self.model.FCTStep()        
+        #self.model.q['dV_last'][:] = self.model.q['dV']
         if self.checkMass:
             self.m_post = Norms.scalarDomainIntegral(self.model.q['dV'],
                                                      self.model.q[('m',0)],
@@ -766,6 +746,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.ebq_global={}
         self.ebqe={}
         self.phi_ip={}
+        self.edge_based_cfl = numpy.zeros(self.u[0].dof.shape)
         #mesh
         self.q['x'] = numpy.zeros((self.mesh.nElements_global,self.nQuadraturePoints_element,3),'d')
         self.ebqe['x'] = numpy.zeros((self.mesh.nExteriorElementBoundaries_global,self.nElementBoundaryQuadraturePoints_elementBoundary,3),'d')
@@ -837,7 +818,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.cterm_global=None
         self.cterm_transpose_global=None
         # dL_global and dC_global are not the full matrices but just the CSR arrays containing the non zero entries
-        self.flux_plus_dLij_times_soln=None
+        self.low_order_solution=None
         self.dL_minus_dC=None
         self.min_u_bc=None
         self.max_u_bc=None
@@ -932,7 +913,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
                          self.ML, #Lumped mass matrix
                          self.timeIntegration.u_dof_stage[0][self.timeIntegration.lstage],#soln
                          self.u[0].dof, #solH
-                         self.flux_plus_dLij_times_soln, 
+                         self.low_order_solution,
                          rowptr, #Row indices for Sparsity Pattern (convenient for DOF loops)
                          colind, #Column indices for Sparsity Pattern (convenient for DOF loops)
                          MassMatrix, 
@@ -1109,7 +1090,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.max_u_bc = numpy.zeros(self.u[0].dof.shape,'d')
         self.min_u_bc.fill(1E10);
         self.max_u_bc.fill(-1E10);
-        self.flux_plus_dLij_times_soln = numpy.zeros(self.u[0].dof.shape,'d')
+        self.low_order_solution = numpy.zeros(self.u[0].dof.shape,'d')
         #self.quantDOFs = numpy.zeros(self.u[0].dof.shape,'d')
 
         #
@@ -1155,8 +1136,9 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             pass
         #mwf debug
         #import pdb
-        #pdb.set_trace()        
-        self.vof.calculateResidual(#element
+        #pdb.set_trace()   
+        self.vof.calculateResidual_development(#element # FOR SUPG
+        #self.vof.calculateResidual(#element
             self.u[0].femSpace.elementMaps.psi,
             self.u[0].femSpace.elementMaps.grad_psi,
             self.mesh.nodeArray,
@@ -1197,16 +1179,14 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.timeIntegration.u_dof_stage[0][self.timeIntegration.lstage], #u last stage and u^n right now
             self.coefficients.u_dof_old,
             self.coefficients.u_dof_old_old,
-            self.coefficients.velx_tn_dof, 
-            self.coefficients.vely_tn_dof, # HACKED TO 2D FOR NOW (MQL)
             self.coefficients.q_v,
-            self.coefficients.q_div_velocity,
             self.timeIntegration.m_tmp[0],
             self.q[('u',0)],
             self.timeIntegration.beta_bdf[0],
             self.q['dV'],
             self.q['dV_last'],
             self.q[('cfl',0)],
+            self.edge_based_cfl,
             self.shockCapturing.numDiff[0],
             self.shockCapturing.numDiff_last[0],
             self.offset[0],self.stride[0],
@@ -1216,7 +1196,6 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.mesh.elementBoundaryElementsArray,
             self.mesh.elementBoundaryLocalElementBoundariesArray,
             self.coefficients.ebqe_v,
-            self.coefficients.ebqe_div_velocity,
             #VRANS start
             self.coefficients.ebqe_porosity,
             #VRANS end
@@ -1250,30 +1229,34 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             CTx,
             CTy, #NOTE: for now I assume the problem is in 2D!!!! (MQL). TODO: make it general 
             # PARAMETERS FOR 1st or 2nd ORDER MPP METHOD
-            self.coefficients.POWER_SMOOTHNESS_INDICATOR,
             self.coefficients.LUMPED_MASS_MATRIX,
             # FLUX CORRECTED TRANSPORT
-            self.flux_plus_dLij_times_soln, 
+            self.low_order_solution,
             self.dL_minus_dC, 
             self.min_u_bc,
             self.max_u_bc,
             self.quantDOFs)
         
-        #print numpy.min(r), numpy.max(r)
-        #input("")
-
         if self.forceStrongConditions:#
             for dofN,g in self.dirichletConditionsForceDOF.DOFBoundaryConditionsDict.iteritems():
                 r[dofN] = 0
+
+        edge_based_cflMax=globalMax(self.edge_based_cfl.max())*self.timeIntegration.dt
+        cell_based_cflMax=globalMax(self.q[('cfl',0)].max())*self.timeIntegration.dt
+        logEvent("...   Current dt = " + str(self.timeIntegration.dt),level=4)
+        logEvent("...   Maximum Cell Based CFL = " + str(cell_based_cflMax),level=2)
+        logEvent("...   Maximum Edge Based CFL = " + str(edge_based_cflMax),level=2)
+
+        #input("STOP")
+
         if self.stabilization:
             self.stabilization.accumulateSubgridMassHistory(self.q)
         logEvent("Global residual",level=9,data=r)
-        #mwf debug
-        #pdb.set_trace()
-        #mwf decide if this is reasonable for keeping solver statistics
+        
         self.nonlinear_function_evaluations += 1
         if self.globalResidualDummy == None:
             self.globalResidualDummy = numpy.zeros(r.shape,'d')
+
     def getJacobian(self,jacobian):
         cfemIntegrals.zeroJacobian_CSR(self.nNonzerosInJacobian,
                                        jacobian)
@@ -1284,7 +1267,8 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         except:
             pass
 
-        self.vof.calculateJacobian(#element
+        self.vof.calculateJacobian(#element # FOR SUPG
+        #self.vof.calculateMassMatrix(#element
             self.u[0].femSpace.elementMaps.psi,
             self.u[0].femSpace.elementMaps.grad_psi,
             self.mesh.nodeArray,

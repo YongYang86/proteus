@@ -933,6 +933,12 @@ class NS_base:  # (HasTraits):
         for index,model in enumerate(self.modelList):
             self.finalizeViewSolution(model)
             self.closeArchive(model,index)
+
+        # TMP to plot redistancing history
+        print ('Saving L2 norm history')
+        redistancing_L2_norm_history = numpy.array(self.modelList[-1].levelModelList[-1].redistancing_L2_norm_history)
+        numpy.savetxt('redistancing_L2_norm_history.txt', redistancing_L2_norm_history, delimiter=', ')
+
         return systemStepFailed
     #
     #try to make preStep and postStep just manipulate "current values" and let the step controllers manage the history setting

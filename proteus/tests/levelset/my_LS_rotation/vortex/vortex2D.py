@@ -5,15 +5,22 @@ from proteus import Profiling
 import numpy as np
 import math 
 
-timeIntegration_ncls = "SSP33" 
-#timeIntegration_ncls = "FE" 
+useSUPG=False
+#timeIntegration_ncls = "SSP33" 
+timeIntegration_ncls = "FE" 
 lRefinement=3
+T=2.0
+nDTout=20
 
+pure_redistancing=False
+redist_tolerance=0.1
+epsCoupez=2
+epsFactRedistancing=0.33
+lambda_coupez = 1.0
 # ENTROPY VISCOSITY 
-EDGE_VISCOSITY=1
-ENTROPY_VISCOSITY=1
-LUMPED_MASS_MATRIX=1
-FCT=0
+EDGE_VISCOSITY=0
+ENTROPY_VISCOSITY=0
+LUMPED_MASS_MATRIX=0
 # SHOCK CAPTURING PARAMETERS
 shockCapturingFactor_ncls=0.2
 # OTHER TIME PARAMETERS
@@ -55,7 +62,7 @@ nn=nnx=nny=(2**lRefinement)*10+1
 nnz=1
 he=1.0/(nnx-1.0)
 
-unstructured=False #True for tetgen, false for tet or hex from rectangular grid
+unstructured=True #True for tetgen, false for tet or hex from rectangular grid
 box=Domain.RectangularDomain(L=(1.0,1.0),
                              x=(0.0,0.0),
                              name="box");
@@ -68,10 +75,7 @@ if unstructured:
     triangleOptions="pAq30Dena%8.8f"  % (0.5*he**2,)
 else:
     domain = box
-#end time of simulation, full problem is T=8.0
-T=1.0
-#number of output time steps
-nDTout = 10
+
 #eps
 epsFactHeaviside=epsFactDirac=1.5
 if useMetrics:
@@ -124,7 +128,7 @@ class MyCoefficients(NCLS.Coefficients):
         #self.ebqe_v[...,1]  =  2.0*pi*(x_boundary-0.5)
 
         #PERIODIC VORTEX
-        T=1
+        T=2
         self.q_v[...,0] = -2*np.sin(pi*y)*np.cos(pi*y)*np.sin(pi*x)**2*np.cos(pi*t/T)
         self.q_v[...,1] = 2*np.sin(pi*x)*np.cos(pi*x)*np.sin(pi*y)**2*np.cos(pi*t/T)        
         self.ebqe_v[...,0] = -2*np.sin(pi*y_boundary)*np.cos(pi*y_boundary)*np.sin(pi*x_boundary)**2*np.cos(pi*t/T)
@@ -133,8 +137,6 @@ class MyCoefficients(NCLS.Coefficients):
         copyInstructions = {}
         return copyInstructions
     def postStep(self,t,firstStep=False):
-        if (self.FCT==1):
-            self.model.FCTStep()
         copyInstructions = {}
         return copyInstructions
     def evaluate(self,t,c):

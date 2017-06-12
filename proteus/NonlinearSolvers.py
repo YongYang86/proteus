@@ -649,62 +649,69 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
     if you give it the right Jacobian
     """
     def solve(self,u,r=None,b=None,par_u=None,par_r=None):
-        self.F.getRhsSmoothing(u,r)
-        if (self.F.SmoothingMatrix == None):
-            import copy
-            self.F.getSmoothingMatrix()
-            self.linearSolver.L = self.F.SmoothingMatrix          
-            #Save sparse factor for Jacobian
-            self.F.Jacobian_sparseFactor = self.linearSolver.sparseFactor
-            #create a new sparse factor. For now use the same as the Jacobian
-            self.F.SmoothingMatrix_sparseFactor = superluWrappers.SparseFactor(self.linearSolver.n)
-            #reference the self.linearSolver.sparseFactor to use the new sparse Factor
-            self.linearSolver.sparseFactor = self.F.SmoothingMatrix_sparseFactor
-            #Compute the new sparse factor; i.e., self.F.SmoothingMatrix_sparseFactor
-            self.linearSolver.prepare(b=r)
-        self.du[:]=0        
-        # Set sparse factors
-        self.linearSolver.L = self.F.SmoothingMatrix          
-        self.linearSolver.sparseFactor = self.F.SmoothingMatrix_sparseFactor
-        if not self.directSolver:
-            if self.EWtol:
-                self.setLinearSolverTolerance(r)
-        if not self.linearSolverFailed:
-            self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
-            self.linearSolverFailed = self.linearSolver.failed()
-        u[:]=self.du
-        #self.F.getRhsSmoothing(u,r)
-        #self.F.setUnknowns(self.F.timeIntegration.u)
-        #self.F.coefficients.u_dof_old[:] = self.F.u[0].dof
+        doSmoothing = True
+        doRedistancing = True
 
-        self.F.uStar_dof[:] = u
-        # Set sparse factors to Jacobian
-        self.computeResidual(u,r,b)
-        if self.updateJacobian or self.fullNewton:            
-            self.F.getJacobian(self.J)
-            # set linear solver to be the jacobian
-            self.linearSolver.L = self.J
-            # set space factors to be the jacobian factor 
-            self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
-            self.linearSolver.prepare(b=r)
-            self.updateJacobian = False
-        self.du[:]=0.0
-        # Set sparse factors 
-        self.linearSolver.L = self.J
-        self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
-        if not self.directSolver:
-            if self.EWtol:
-                self.setLinearSolverTolerance(r)
-        if not self.linearSolverFailed:
-            self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
-            self.linearSolverFailed = self.linearSolver.failed()
-        u-=self.du
+        if (doSmoothing):
+            self.F.getRhsSmoothing(u,r)
+            if (self.F.SmoothingMatrix == None):
+                self.F.getSmoothingMatrix()
+                self.linearSolver.L = self.F.SmoothingMatrix          
+                # Save sparse factor for Jacobian
+                self.F.Jacobian_sparseFactor = self.linearSolver.sparseFactor
+                # create a new sparse factor. For now use the same as the Jacobian
+                self.F.SmoothingMatrix_sparseFactor = superluWrappers.SparseFactor(self.linearSolver.n)
+                # reference the self.linearSolver.sparseFactor to use the new sparse Factor
+                self.linearSolver.sparseFactor = self.F.SmoothingMatrix_sparseFactor
+                # Compute the new sparse factor; i.e., self.F.SmoothingMatrix_sparseFactor
+                self.linearSolver.prepare(b=r)
+            self.du[:]=0        
+            # Set sparse factors
+            self.linearSolver.L = self.F.SmoothingMatrix          
+            self.linearSolver.sparseFactor = self.F.SmoothingMatrix_sparseFactor
+            if not self.directSolver:
+                if self.EWtol:
+                    self.setLinearSolverTolerance(r)
+            if not self.linearSolverFailed:
+                self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+                self.linearSolverFailed = self.linearSolver.failed()
+            u[:]=self.du
+            self.F.uStar_dof[:] = u
+        else:
+            self.F.uStar_dof[:] = self.F.coefficients.u_dof_old[:]
+
+        #############################
+        ### COMPUTE MAIN SOLUTION ### 
+        #############################
+        if (self.F.coefficients.pure_redistancing==False):
+            self.computeResidual(u,r,b)        
+            if self.updateJacobian or self.fullNewton:            
+                self.F.getJacobian(self.J)
+                # set linear solver to be the jacobian
+                if (doSmoothing):
+                    self.linearSolver.L = self.J
+                    # set space factors to be the jacobian factor 
+                    self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
+                self.linearSolver.prepare(b=r)
+                self.updateJacobian = False
+            self.du[:]=0.0
+            if (doSmoothing):
+                # Set sparse factors 
+                self.linearSolver.L = self.J
+                self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
+            if not self.directSolver:
+                if self.EWtol:
+                    self.setLinearSolverTolerance(r)
+            if not self.linearSolverFailed:
+                self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+                self.linearSolverFailed = self.linearSolver.failed()
+            u-=self.du
         
-        # DISTRIBUTE SOLUTION FROM u to u[ci].dof
-        #self.F.auxiliaryCallCalculateResidual = True
-        #self.computeResidual(u,r,b)
-        #self.F.auxiliaryCallCalculateResidual = False
-        self.F.setUnknowns(self.F.timeIntegration.u)
+            # DISTRIBUTE SOLUTION FROM u to u[ci].dof
+            # self.F.auxiliaryCallCalculateResidual = True
+            self.computeResidual(u,r,b)
+            # self.F.auxiliaryCallCalculateResidual = False
+            # self.F.setUnknowns(self.F.timeIntegration.u)
 
         ############################
         ##### Do re-distancing #####
@@ -712,11 +719,11 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
         logEvent("***** Starting re-distancing *****",2)
         numIter=0
         self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
-        if(True):
+        if(doRedistancing):
             if (self.F.coefficients.pure_redistancing==True):                
                 self.F.edge_based_cfl.fill(self.F.coefficients.cfl_redistancing/self.F.dt_redistancing)
                 self.F.coefficients.maxIter_redistancing=1
-            while (self.F.L2_norm_redistancing > self.F.coefficients.redistancing_tolerance 
+            while (self.F.L2_norm_redistancing > self.F.coefficients.redistancing_tolerance*self.F.mesh.h
                    and numIter < self.F.coefficients.maxIter_redistancing):
                 self.F.coefficients.u_dof_old = numpy.copy(self.F.u[0].dof)
                 self.F.getRedistancingResidual(u,r)
@@ -737,8 +744,33 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
                 numIter += 1        
         logEvent("***** Re-distancing finished. Number of iterations = "+str(numIter)
                  + ". L2 norm of error: "+str(self.F.L2_norm_redistancing)
-                 + ". Tolerance: "+str(self.F.coefficients.redistancing_tolerance)
+                 + ". Tolerance: "+str(self.F.coefficients.redistancing_tolerance*self.F.mesh.h)
                  ,2)        
+
+class ExplicitConsistentMassMatrixForVOF(Newton):
+    """
+     This is a fake solver meant to be used with optimized code
+    A simple iterative solver that is Newton's method
+    if you give it the right Jacobian
+    """
+    def solve(self,u,r=None,b=None,par_u=None,par_r=None):
+        self.computeResidual(u,r,b)
+        if self.updateJacobian or self.fullNewton:            
+            self.F.getJacobian(self.J)
+            self.linearSolver.prepare(b=r)
+            self.updateJacobian = False
+        self.du[:]=0.0
+        # Set sparse factors 
+        if not self.directSolver:
+            if self.EWtol:
+                self.setLinearSolverTolerance(r)
+        if not self.linearSolverFailed:
+            self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+            self.linearSolverFailed = self.linearSolver.failed()
+        u-=self.du
+        # DISTRIBUTE SOLUTION FROM u to u[ci].dof
+        self.computeResidual(u,r,b)
+        #self.F.setUnknowns(self.F.timeIntegration.u)
         
 import deim_utils
 class POD_Newton(Newton):
@@ -2817,6 +2849,8 @@ def multilevelNonlinearSolverChooser(nonlinearOperatorList,
         levelNonlinearSolverType = ExplicitLumpedMassMatrix
     elif (levelNonlinearSolverType == ExplicitConsistentMassMatrixWithRedistancing):
         levelNonlinearSolverType = ExplicitConsistentMassMatrixWithRedistancing
+    elif (levelNonlinearSolverType == ExplicitConsistentMassMatrixForVOF):
+        levelNonlinearSolverType = ExplicitConsistentMassMatrixForVOF
     elif (multilevelNonlinearSolverType == Newton or
         multilevelNonlinearSolverType == NLJacobi or
         multilevelNonlinearSolverType == NLGaussSeidel or

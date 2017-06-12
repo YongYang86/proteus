@@ -5,10 +5,15 @@ from vortex2D import *
 nd = 2
 
 multilevelNonlinearSolver  = Newton
-levelNonlinearSolver = ExplicitLumpedMassMatrix
-#levelNonlinearSolver = Newton
-fullNewtonFlag = False
-updateJacobian = False
+levelNonlinearSolver = Newton
+fullNewtonFlag = True
+updateJacobian = True
+
+if (useSUPG==False):
+    #levelNonlinearSolver = ExplicitLumpedMassMatrix
+    levelNonlinearSolver = ExplicitConsistentMassMatrixWithRedistancing
+    fullNewtonFlag=False
+    updateJacobian=False
 
 timeIntegration = NCLS.RKEV # SSP33 #mwf right now need timeIntegration to be SSP33 to run
 stepController = Min_dt_controller
