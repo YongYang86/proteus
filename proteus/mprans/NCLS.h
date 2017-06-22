@@ -10,20 +10,19 @@
 #define POWER_SMOOTHNESS_INDICATOR 1
 #define SATURATED_LEVEL_SET 1
 #define COUPEZ 1
+#define BETAij 1
 
 /////////////////////
 //ENTROPY FUNCTION //
 /////////////////////
 // Power entropy //
-#define entropy_power 1. // phiL and phiR are dummy variables
-#define ENTROPY(phi,phiL,phiR) 1./entropy_power*std::pow(phi,entropy_power)
-#define DENTROPY(phi,phiL,phiR) std::pow(phi,entropy_power-1.)
-#define ENTROPY_GRAD(phi,phix,phiL,phiR) std::pow(phi,entropy_power-1.)*phix
-// Log entropy //
-// LOG ENTROPY FOR LEVEL SET FROM 0 to 1
-//#define ENTROPY(phi,phiL,phiR) std::log(std::abs((phi-phiL)*(phiR-phi))+1E-14)
-//#define DENTROPY(phi,phiL,phiR) (phiL+phiR-2*phi)*((phi-phiL)*(phiR-phi)>=0 ? 1 : -1)/(std::abs((phi-phiL)*(phiR-phi))+1E-14) 
-//#define ENTROPY_GRAD(phi,phix,phiL,phiR) (phiL+phiR-2*phi)*phix*((phi-phiL)*(phiR-phi)>=0 ? 1 : -1)/(std::abs((phi-phiL)*(phiR-phi))+1E-14) 
+#define entropy_power 2. // phiL and phiR are dummy variables
+#define ENTROPY(phi) 1./entropy_power*std::pow(phi,entropy_power)
+#define DENTROPY(phi) std::pow(phi,entropy_power-1.)
+#define ENTROPY_GRAD(phi,phix) std::pow(phi,entropy_power-1.)*phix
+
+#define ENTROPY_LOG(phi,phiL,phiR) std::log(std::abs((phi-phiL)*(phiR-phi))+1E-14)
+#define DENTROPY_LOG(phi,phiL,phiR) (phiL+phiR-2*phi)*((phi-phiL)*(phiR-phi)>=0 ? 1 : -1)/(std::abs((phi-phiL)*(phiR-phi))+1E-14) 
 
 namespace proteus
 {
@@ -784,42 +783,6 @@ namespace proteus
 	    }//i
 	}//elements
 
-      //////////////////////////////////////////////////////////
-      // COMPUTE g vector aux VECTOR FOR SMOOTHNESS INDICATOR //
-      //////////////////////////////////////////////////////////
-      // gi=1/mi*sum_j(Cij*uj)
-      register double gx[numDOFs], gy[numDOFs], gNorm[numDOFs], 
-	SumPos[numDOFs], SumNeg[numDOFs], betaPos[numDOFs], betaNeg[numDOFs];
-      int ij = 0;
-      for (int i=0; i<numDOFs; i++)
-	{
-	  double solni = u_dof_old[i];
-	  gx[i]=0.;
-	  gy[i]=0.;
-	  SumPos[i] = 0.;
-	  SumNeg[i] = 0.;	  
-	  for (int offset=csrRowIndeces_DofLoops[i]; offset<csrRowIndeces_DofLoops[i+1]; offset++)
-	    {
-	      int j = csrColumnOffsets_DofLoops[offset];
-	      double solnj = u_dof_old[j];
-	      // for gi vector
-	      gx[i] += Cx[ij]*solnj;
-	      gy[i] += Cy[ij]*solnj;
-	      // SumPos and SumNeg for smoothness indicator 
-	      SumPos[i] += (solnj - solni) > 0 ? (solnj - solni) : 0.;
-	      SumNeg[i] += (solnj - solni) < 0 ? (solnj - solni) : 0.;
-	      //update ij
-	      ij+=1;
-	    }
-	  gx[i] /= ML[i];
-	  gy[i] /= ML[i];
-	  gNorm[i] = std::sqrt(std::pow(gx[i],2) + std::pow(gy[i],2));	  
-	  // betaPos and betaNeg for smoothness indicator 
-	  double Sum = SumPos[i] + SumNeg[i];
-	  betaPos[i] = Sum < 0 ? 1. : (-SumNeg[i])/(SumPos[i]+1E-15);
-	  betaNeg[i] = Sum > 0 ? 1. : (SumPos[i])/(-SumNeg[i]+1E-15);
-	}
-
       //////////////////////////////////
       // COMPUTE SMOOTHNESS INDICATOR //
       //////////////////////////////////
@@ -837,9 +800,8 @@ namespace proteus
 	    { //loop in j (sparsity pattern)
 	      int j = csrColumnOffsets_DofLoops[offset];
 	      double solnj = u_dof_old[j]; // solution at time tn for the jth DOF
-	      double betaij = (solnj - solni >= 0. ? betaPos[i] : betaNeg[i]) * gNorm[j];
-	      alpha_numi += betaij*(solnj-solni);
-	      alpha_deni += betaij*fabs(solnj-solni);
+	      alpha_numi += solnj-solni;
+	      alpha_deni += fabs(solnj-solni);
 	    }
 	  alphai = (fabs(alpha_numi) == alpha_deni ? 1. : fabs(alpha_numi)/(alpha_deni+1E-15));
 	  if (POWER_SMOOTHNESS_INDICATOR==0)
@@ -855,7 +817,7 @@ namespace proteus
       /////////////////////////////////////////////
       // ** LOOP IN DOFs FOR EDGE BASED TERMS ** //
       /////////////////////////////////////////////
-      ij=0;
+      int ij=0;
       for (int i=0; i<numDOFs; i++)
 	{
 	  double solni = u_dof_old[i]; // solution at time tn for the ith DOF
@@ -876,8 +838,6 @@ namespace proteus
 		  // first-order dissipative operator
 		  //dLij = fmax(0.0,std::max(TransportMatrix[ij],TransposeTransportMatrix[ij]));
 		  dLij = fmax(fabs(TransportMatrix[ij]),fabs(TransposeTransportMatrix[ij]));
-		  // weight low-order dissipative matrix to make it higher order
-		  //dLij *= 0.5*(1+std::max(psi[i],psi[j])); 
 		  dLij *= fmax(psi[i],psi[j]); 
 		  //dissipative terms
 		  ith_dissipative_term += dLij*(solnj-solni);		  
@@ -893,7 +853,6 @@ namespace proteus
 	  globalResidual[i] += dt*(ith_flux_term - ith_dissipative_term); 
 	}
       return L2_norm;
-
     }
 
     double calculateRhsSmoothing(
@@ -1164,9 +1123,9 @@ namespace proteus
 		      vn[0] = velocity[eN_k_nSpace];
 		      vn[1] = velocity[eN_k_nSpace+1];
 		      entropy_residual = 
-			(ENTROPY(un,-epsCoupez,epsCoupez) - ENTROPY(unm1,-epsCoupez,epsCoupez))/dt // time derivative
-			+ vn[0]*ENTROPY_GRAD(un,grad_un[0],-epsCoupez,epsCoupez)+vn[1]*ENTROPY_GRAD(un,grad_un[1],-epsCoupez,epsCoupez) // velocity * grad(entropy)
-			+ ENTROPY(un,-epsCoupez,epsCoupez)*(vn[0]+vn[1]); // For non div free velocities
+			(ENTROPY(un) - ENTROPY(unm1))/dt // time derivative
+			+ vn[0]*ENTROPY_GRAD(un,grad_un[0])+vn[1]*ENTROPY_GRAD(un,grad_un[1]) // velocity * grad(entropy)
+			+ ENTROPY(un)*(vn[0]+vn[1]); // For non div free velocities
 		    }
 		      
 		  //////////////
@@ -2344,10 +2303,13 @@ namespace proteus
 	      //////////////////////////////////////////////
 	      // CALCULATE ENTROPY RESIDUAL AT QUAD POINT //
 	      //////////////////////////////////////////////
-	      double entropy_residual = ((un - unm1)/dt + vn[0]*grad_un[0] + vn[1]*grad_un[1]
-					 -dist_error*COUPEZ*lambda_coupez*sgn
-					 *(1-SATURATED_LEVEL_SET*std::pow(un/epsCoupez,2)))*DENTROPY(un,-epsCoupez,epsCoupez);
-
+	      //double entropy_residual = ((un - unm1)/dt + vn[0]*grad_un[0] + vn[1]*grad_un[1]
+	      //			 -dist_error*COUPEZ*lambda_coupez*sgn
+	      //			 *(1-SATURATED_LEVEL_SET*std::pow(un/epsCoupez,2)))*DENTROPY(un);
+	      double entropy_residual = 
+		(vn[0]*grad_un[0] + vn[1]*grad_un[1]
+		 -dist_error*COUPEZ*lambda_coupez*sgn*(1-SATURATED_LEVEL_SET*std::pow(un/epsCoupez,2)));
+	      double DENTROPY_un = DENTROPY_LOG(un,-epsCoupez,epsCoupez);
 	      //////////////
 	      // ith-LOOP //
 	      //////////////
@@ -2357,10 +2319,16 @@ namespace proteus
 
 	      for(int i=0;i<nDOF_test_element;i++) 
 		{ 
+		  int eN_i=eN*nDOF_test_element+i;
+		  int gi = offset_u+stride_u*u_l2g[eN_i]; //global i-th index
+		  double uni = u_dof_old[gi];
+
+		  elementEntResVector[i] += (DENTROPY_un - DENTROPY_LOG(uni,-epsCoupez,epsCoupez))*entropy_residual*u_test_dV[i];
+		  //elementEntResVector[i] += entropy_residual*u_test_dV[i];
+	      
 		  // lumped mass matrix
 		  element_lumped_mass_matrix[i] += u_test_dV[i];
 		  elementResidual_u[i] += residual*u_test_dV[i];
-		  elementEntResVector[i] += entropy_residual*u_test_dV[i];
 		  
 		  ///////////////
 		  // j-th LOOP // To construct transport matrices
@@ -2443,11 +2411,8 @@ namespace proteus
 	  gx[i]=0.;
 	  gy[i]=0.;
 	  // entropy // 
-	  eta[i] = ENTROPY(u_dof_old[i],-epsCoupez,epsCoupez);
+	  eta[i] = ENTROPY_LOG(u_dof_old[i],-epsCoupez,epsCoupez);
 	  // for smoothness indicator // 
-	  //SumPos[i] = 0.;
-	  //SumNeg[i] = 0.;
-
 	  alpha_numerator_pos[i] = 0.;
 	  alpha_numerator_neg[i] = 0.;
 	  alpha_denominator_pos[i] = 0.;
@@ -2457,30 +2422,21 @@ namespace proteus
 	    {
 	      int j = csrColumnOffsets_DofLoops[offset];
 	      double solnj = u_dof_old[j];
+
 	      // for gi vector
 	      gx[i] += Cx[ij]*solnj;
 	      gy[i] += Cy[ij]*solnj;
-	      // SumPos and SumNeg for smoothness indicator 
-	      //SumPos[i] += (solnj - solni) > 0 ? (solnj - solni) : 0.;
-	      //SumNeg[i] += (solnj - solni) < 0 ? (solnj - solni) : 0.;
 
 	      double alpha_num = solnj - solni;
-	      alpha_numerator_pos[i] += alpha_num > 0 ? alpha_num : 0.;
-	      alpha_numerator_neg[i] += alpha_num < 0 ? alpha_num : 0.;
-	      alpha_denominator_pos[i] += alpha_num > 0 ? alpha_num : 0.;
-	      alpha_denominator_neg[i] += alpha_num < 0 ? fabs(alpha_num) : 0.;
-
+	      alpha_numerator_pos[i] += alpha_num > 0. ? alpha_num : 0.;
+	      alpha_numerator_neg[i] += alpha_num < 0. ? alpha_num : 0.;
+	      alpha_denominator_pos[i] += alpha_num > 0. ? alpha_num : 0.;
+	      alpha_denominator_neg[i] += alpha_num < 0. ? fabs(alpha_num) : 0.;
 	      //update ij
 	      ij+=1;
 	    }
 	  gx[i] /= ML[i];
 	  gy[i] /= ML[i];
-	  //gNorm[i] = std::sqrt(std::pow(gx[i],2) + std::pow(gy[i],2));
-	  
-	  // betaPos and betaNeg for smoothness indicator 
-	  //double Sum = SumPos[i] + SumNeg[i];
-	  //betaPos[i] = Sum < 0 ? 1. : (-SumNeg[i])/(SumPos[i]+1E-15);
-	  //betaNeg[i] = Sum > 0 ? 1. : (SumPos[i])/(-SumNeg[i]+1E-15);
 	}
 
       //////////////////////////////////////////////////////////
@@ -2495,10 +2451,6 @@ namespace proteus
 	  double alphai;
 	  double xi = mesh_dof[i*3+0];
 	  double yi = mesh_dof[i*3+1];
-	  //double solni = u_dof_old[i]; // solution at time tn for the ith DOF
-	  // for smoothness indicator
-	  //double alpha_numi=0;
-	  //double alpha_deni=0;
 	  // For eta min and max
 	  etaMax[i] = fabs(eta[i]);
 	  etaMin[i] = fabs(eta[i]);	  
@@ -2510,10 +2462,6 @@ namespace proteus
 	      int j = csrColumnOffsets_DofLoops[offset];
 	      double xj = mesh_dof[j*3+0];
 	      double yj = mesh_dof[j*3+1];
-	      //double solnj = u_dof_old[j]; // solution at time tn for the jth DOF
-	      //double betaij = (solnj - solni >= 0. ? betaPos[i] : betaNeg[i]) * gNorm[j];
-	      //alpha_numi += betaij*(solnj-solni);
-	      //alpha_deni += betaij*fabs(solnj-solni);
 	      /////////////////////////////////
 	      // COMPUTE ETA MIN AND ETA MAX // 
 	      /////////////////////////////////
@@ -2526,18 +2474,26 @@ namespace proteus
 	      SumPos[i] += gj_times_x > 0 ? gj_times_x : 0;
 	      SumNeg[i] += gj_times_x < 0 ? gj_times_x : 0;
 	    }
-	  //alphai = (fabs(alpha_numi) == alpha_deni ? 1. : fabs(alpha_numi)/(alpha_deni+1E-15));
-
-
 	  // Compute sigmaPos and sigmaNeg
 	  double Sum = SumPos[i] + SumNeg[i];
-	  double sigmaPosi = Sum < 0 ? 1. : (-SumNeg[i])/(SumPos[i]+1E-15);
-	  double sigmaNegi = Sum > 0 ? 1. : (SumPos[i])/(-SumNeg[i]+1E-15);
+	  double sigmaPosi = fmin(1.,(-SumNeg[i]+1E-15)/(SumPos[i]+1E-15));
+	  double sigmaNegi = fmin(1.,(SumPos[i]+1E-15)/(-SumNeg[i]+1E-15));
 
 	  double alpha_numi = fabs(sigmaPosi*alpha_numerator_pos[i] + sigmaNegi * alpha_numerator_neg[i]);
 	  double alpha_deni = sigmaPosi*alpha_denominator_pos[i] + sigmaNegi * alpha_denominator_neg[i];
-	  alphai = (alpha_numi == alpha_deni ? 1. : alpha_numi/(alpha_deni+1E-15));
-	  quantDOFs[i] = alphai;
+
+	  double alpha_num_threshold = 0.1;
+	  if (BETAij == 1)
+	    {
+	      alpha_numi = fabs(alpha_numerator_pos[i] + alpha_numerator_neg[i]);
+	      alpha_deni = alpha_denominator_pos[i] + alpha_denominator_neg[i];
+	    }
+	  double g = std::sqrt(std::pow(gx[i],2)+std::pow(gy[i],2));
+	  if (g <= alpha_num_threshold) // Extrema and const state
+	    alphai = 1.;
+	  else 
+	    alphai = alpha_numi/(alpha_deni+1E-15);
+	  quantDOFs[i] = alphai; 
 
 	  if (POWER_SMOOTHNESS_INDICATOR==0)
 	    psi[i] = 1.0;
@@ -2549,7 +2505,7 @@ namespace proteus
       /////////////////////////////////////////////
       // ** LOOP IN DOFs FOR EDGE BASED TERMS ** //
       /////////////////////////////////////////////
-      double cE = 1.0;
+      double cE = 1.;
       ij=0;
       for (int i=0; i<numDOFs; i++)
 	{
@@ -2558,7 +2514,8 @@ namespace proteus
 	  double ith_flux_term = 0;
 	  double dLii = 0.;
 
-	  double one_over_entNormFactori = etaMax[i] == etaMin[i] ? 0. : 1./(etaMax[i]-etaMin[i]);	  
+	  //double one_over_entNormFactori = etaMax[i] == etaMin[i] ? 0. : 1./(etaMax[i]-etaMin[i]);
+	  double one_over_entNormFactori = 2./(etaMax[i]-etaMin[i]+1E-15);
 	  // loop over the sparsity pattern of the i-th DOF
 	  for (int offset=csrRowIndeces_DofLoops[i]; offset<csrRowIndeces_DofLoops[i+1]; offset++)
 	    {
@@ -2572,16 +2529,17 @@ namespace proteus
 		  // first-order dissipative operator
 		  dLij = std::max(fabs(TransportMatrix[ij]),fabs(TransposeTransportMatrix[ij]));
 		  // weight low-order dissipative matrix to make it higher order
-		  //dLij *= 0.5*(1+std::max(psi[i],psi[j])); 
 		  dLij *= fmax(psi[i],psi[j]); 
 		  // high-order (entropy viscosity) dissipative operator 		  
-		  double one_over_entNormFactorj = etaMax[j] == etaMin[j] ? 0. : 1./(etaMax[j]-etaMin[j]);
+		  //double one_over_entNormFactorj = etaMax[j] == etaMin[j] ? 0. : 1./(etaMax[j]-etaMin[j]);
+		  double one_over_entNormFactorj = 2./(etaMax[j]-etaMin[j]+1E-15);
 		  double dEVij = fmax(std::abs(global_entropy_residual[i])*one_over_entNormFactori,
 				      std::abs(global_entropy_residual[j])*one_over_entNormFactorj);
 		  //dissipative terms
 		  ith_dissipative_term += fmin(dLij,cE*dEVij)*(solnj-solni);
 		  //ith_dissipative_term += dLij*(solnj-solni);
 		  dLii -= fmin(dLij,cE*dEVij);
+		  //dLii -= dLij;
 		}
 	      //update ij
 	      ij+=1;
@@ -2595,13 +2553,13 @@ namespace proteus
 	    //globalResidual[i] = mi*(u_dof[i] - u_dof_old[i]) + dt*(ith_flux_term - ith_dissipative_term);
 	    globalResidual[i] = u_dof_old[i] - dt/mi*(ith_flux_term - ith_dissipative_term);
 	  else
-	    globalResidual[i] += 0*dt*(ith_flux_term - ith_dissipative_term);
+	    globalResidual[i] += dt*(ith_flux_term - ith_dissipative_term);
 	}
 
       /////////////////////////
       // BOUNDARY CONDITIONS //
       /////////////////////////
-      if(false)
+      if(true)
       for (int ebNE = 0; ebNE < nExteriorElementBoundaries_global; ebNE++) 
 	{ 
 	  register int ebN = exteriorElementBoundariesArray[ebNE], 

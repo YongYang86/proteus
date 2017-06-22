@@ -270,7 +270,7 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
                  pure_redistancing=False,
                  epsFactRedistancing=0.33,
                  redistancing_tolerance=0.1,
-                 maxIter_redistancing=5,
+                 maxIter_redistancing=3,
                  lambda_coupez=0.,
                  cfl_redistancing=0.1):
 
