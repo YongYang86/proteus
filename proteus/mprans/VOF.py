@@ -90,8 +90,8 @@ class RKEV(proteus.TimeIntegration.SSP33):
     #    self.dt = DTSET #  don't update t
     def choose_dt(self):
         maxCFL = 1.0e-6
-        #maxCFL = max(maxCFL,globalMax(self.edge_based_cfl.max()))
-        maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max())) #FOR SUPG
+        maxCFL = max(maxCFL,globalMax(self.edge_based_cfl.max()))
+        #maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max())) #FOR SUPG
         self.dt = self.runCFL/maxCFL
         if self.dtLast == None:
             self.dtLast = self.dt
@@ -1080,6 +1080,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
                                                                           self.cterm_transpose[d],
                                                                           self.cterm_global_transpose[d])
 
+                self.quantDOFs = numpy.zeros(self.u[0].dof.shape,'d')
         rowptr, colind, Cx = self.cterm_global[0].getCSRrepresentation()
         rowptr, colind, Cy = self.cterm_global[1].getCSRrepresentation()
         rowptr, colind, CTx = self.cterm_global_transpose[0].getCSRrepresentation()
@@ -1091,8 +1092,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.min_u_bc.fill(1E10);
         self.max_u_bc.fill(-1E10);
         self.low_order_solution = numpy.zeros(self.u[0].dof.shape,'d')
-        #self.quantDOFs = numpy.zeros(self.u[0].dof.shape,'d')
-
+        
         #
         #cek end computationa of cterm_global
         #
@@ -1137,8 +1137,8 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         #mwf debug
         #import pdb
         #pdb.set_trace()   
-        self.vof.calculateResidual_development(#element # FOR SUPG
-        #self.vof.calculateResidual(#element
+        #self.vof.calculateResidual_development(#element # FOR SUPG
+        self.vof.calculateResidual(#element
             self.u[0].femSpace.elementMaps.psi,
             self.u[0].femSpace.elementMaps.grad_psi,
             self.mesh.nodeArray,
@@ -1267,8 +1267,8 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         except:
             pass
 
-        self.vof.calculateJacobian(#element # FOR SUPG
-        #self.vof.calculateMassMatrix(#element
+        #self.vof.calculateJacobian(#element # FOR SUPG
+        self.vof.calculateMassMatrix(#element
             self.u[0].femSpace.elementMaps.psi,
             self.u[0].femSpace.elementMaps.grad_psi,
             self.mesh.nodeArray,
