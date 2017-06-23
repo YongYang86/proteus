@@ -20,8 +20,8 @@ class init_cond:
         beta = epsCoupez*he
         scaling = 1.
         dist = self.radius - math.sqrt((x[0]-self.xc)**2 + (x[1]-self.yc)**2)
-        return dist
-        # return scaling*beta*math.tanh(dist/beta)
+        #return dist
+        return scaling*beta*math.tanh(dist/beta)
         #return smoothedHeaviside(epsFactHeaviside*he,self.radius - math.sqrt((x[0]-self.xc)**2 + (x[1]-self.yc)**2))
         #return math.tanh((x[0]-self.xc))
 
@@ -48,9 +48,9 @@ coefficients = MyCoefficients(epsFact=epsFactHeaviside,checkMass=checkMass,RD_mo
                               LUMPED_MASS_MATRIX=LUMPED_MASS_MATRIX, 
                               lambda_coupez=lambda_coupez,
                               pure_redistancing=pure_redistancing,
-                              redistancing_tolerance=redist_tolerance*he,
+                              redistancing_tolerance=redist_tolerance,
                               epsCoupez=epsCoupez*he,
-                              epsFactRedistancing=epsFactRedistancing*he)
+                              epsFactRedistancing=epsFactRedistancing)
                               
 coefficients.variableNames=['u']
 initialConditions  = {0:init_cond(L)}

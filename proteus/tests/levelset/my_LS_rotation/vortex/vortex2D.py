@@ -9,12 +9,12 @@ useSUPG=False
 #timeIntegration_ncls = "SSP33" 
 timeIntegration_ncls = "FE" 
 lRefinement=3
-T=2.0
+T=1.0
 nDTout=20
 
 pure_redistancing=False
 redist_tolerance=0.1
-epsCoupez=2
+epsCoupez=3
 epsFactRedistancing=0.33
 lambda_coupez = 1.0
 # ENTROPY VISCOSITY 
@@ -128,7 +128,7 @@ class MyCoefficients(NCLS.Coefficients):
         #self.ebqe_v[...,1]  =  2.0*pi*(x_boundary-0.5)
 
         #PERIODIC VORTEX
-        T=2
+        T=1
         self.q_v[...,0] = -2*np.sin(pi*y)*np.cos(pi*y)*np.sin(pi*x)**2*np.cos(pi*t/T)
         self.q_v[...,1] = 2*np.sin(pi*x)*np.cos(pi*x)*np.sin(pi*y)**2*np.cos(pi*t/T)        
         self.ebqe_v[...,0] = -2*np.sin(pi*y_boundary)*np.cos(pi*y_boundary)*np.sin(pi*x_boundary)**2*np.cos(pi*t/T)
