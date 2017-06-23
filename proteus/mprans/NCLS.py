@@ -745,6 +745,7 @@ class LevelModel(OneLevelTransport):
 
         #Smoothing matrix
         self.SmoothingMatrix=None #Mass-epsilon^2*Laplacian 
+        self.SmoothingMatrix_a = None
         self.SmoothingMatrix_sparseFactor=None
         self.Jacobian_sparseFactor=None
         self.uStar_dof = numpy.copy(self.u[0].dof)
@@ -1224,11 +1225,12 @@ class LevelModel(OneLevelTransport):
 
         if (self.SmoothingMatrix==None):
             rowptr, colind, nzval = self.jacobian.getCSRrepresentation()
+            self.SmoothingMatrix_a = nzval.copy()
             nnz = nzval.shape[-1] #number of non-zero entries in sparse matrix
             self.SmoothingMatrix = LinearAlgebraTools.SparseMat(self.nFreeDOF_global[0],
                                                                  self.nFreeDOF_global[0],
                                                                  nnz,
-                                                                 self.MC_a,
+                                                                 self.SmoothingMatrix_a,
                                                                  colind,
                                                                  rowptr)
         cfemIntegrals.zeroJacobian_CSR(self.nNonzerosInJacobian,
