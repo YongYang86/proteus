@@ -123,11 +123,6 @@ class RKEV(proteus.TimeIntegration.SSP33):
         #mwf debug
         #import pdb
         #pdb.set_trace()
-        assert 'FCTStep' in dir(self.transport)
-        assert 'FCT' in dir(self.transport.coefficients) #mwf put FCT switch inside FCTStep method?
-        for ci in range(self.nc):
-            if self.transport.coefficients.FCT == 1:
-                self.transport.FCTStep()
         self.lstage += 1
         assert self.timeOrder in [1,3]
         assert self.lstage > 0 and self.lstage <= self.timeOrder
@@ -463,8 +458,6 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         copyInstructions = {}
         return copyInstructions
     def postStep(self,t,firstStep=False):
-        if (self.FCT==1 and False):
-            self.model.FCTStep()        
         #self.model.q['dV_last'][:] = self.model.q['dV']
         if self.checkMass:
             self.m_post = Norms.scalarDomainIntegral(self.model.q['dV'],
@@ -819,7 +812,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.cterm_transpose_global=None
         # dL_global and dC_global are not the full matrices but just the CSR arrays containing the non zero entries
         self.low_order_solution=None
-        self.dL_minus_dC=None
+        self.dt_times_dC_minus_dL=None
         self.min_u_bc=None
         self.max_u_bc=None
         # Aux quantity at DOFs to be filled by optimized code (MQL)
@@ -907,22 +900,29 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.mesh.nodeVelocityArray = numpy.zeros(self.mesh.nodeArray.shape,'d')
     def FCTStep(self):
         rowptr, colind, MassMatrix = self.MC_global.getCSRrepresentation()
-        self.vof.FCTStep(self.timeIntegration.dt, 
+        limited_solution = numpy.zeros(self.u[0].dof.shape)
+
+        self.vof.FCTStep(
                          self.nnz, #number of non zero entries 
                          len(rowptr)-1, #number of DOFs
                          self.ML, #Lumped mass matrix
                          self.timeIntegration.u_dof_stage[0][self.timeIntegration.lstage],#soln
-                         self.u[0].dof, #solH
+                         self.timeIntegration.u, #high order solution 
                          self.low_order_solution,
+                         limited_solution,
                          rowptr, #Row indices for Sparsity Pattern (convenient for DOF loops)
                          colind, #Column indices for Sparsity Pattern (convenient for DOF loops)
                          MassMatrix, 
-                         self.dL_minus_dC,
+                         self.dt_times_dC_minus_dL,
                          self.min_u_bc,
-                         self.max_u_bc)
+                         self.max_u_bc, 
+                         self.coefficients.LUMPED_MASS_MATRIX)
+        self.timeIntegration.u[:] = limited_solution
+
     #mwf these are getting called by redistancing classes,
     def calculateCoefficients(self):
         pass
+
     def calculateElementResidual(self):
         if self.globalResidualDummy != None:
             self.getResidual(self.u[0].dof,self.globalResidualDummy)
@@ -1086,7 +1086,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         rowptr, colind, CTx = self.cterm_global_transpose[0].getCSRrepresentation()
         rowptr, colind, CTy = self.cterm_global_transpose[1].getCSRrepresentation()
         # This is dummy. I just care about the csr structure of the sparse matrix
-        self.dL_minus_dC = np.zeros(Cx.shape,'d')
+        self.dt_times_dC_minus_dL = np.zeros(Cx.shape,'d')
         self.min_u_bc = numpy.zeros(self.u[0].dof.shape,'d')
         self.max_u_bc = numpy.zeros(self.u[0].dof.shape,'d')
         self.min_u_bc.fill(1E10);
@@ -1232,7 +1232,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.coefficients.LUMPED_MASS_MATRIX,
             # FLUX CORRECTED TRANSPORT
             self.low_order_solution,
-            self.dL_minus_dC, 
+            self.dt_times_dC_minus_dL, 
             self.min_u_bc,
             self.max_u_bc,
             self.quantDOFs)
