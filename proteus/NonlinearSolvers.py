@@ -754,6 +754,9 @@ class ExplicitConsistentMassMatrixForVOF(Newton):
     if you give it the right Jacobian
     """
     def solve(self,u,r=None,b=None,par_u=None,par_r=None):
+        #########################
+        # COMPUTE MAIN SOLUTION #
+        #########################
         self.computeResidual(u,r,b)
         if self.updateJacobian or self.fullNewton:            
             self.F.getJacobian(self.J)
@@ -768,9 +771,14 @@ class ExplicitConsistentMassMatrixForVOF(Newton):
             self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
             self.linearSolverFailed = self.linearSolver.failed()
         u-=self.du
-        # DISTRIBUTE SOLUTION FROM u to u[ci].dof
+        ############
+        # FCT STEP #
+        ############ 
+        self.F.FCTStep()
+        ###########################################
+        # DISTRIBUTE SOLUTION FROM u to u[ci].dof #
+        ###########################################
         self.computeResidual(u,r,b)
-        #self.F.setUnknowns(self.F.timeIntegration.u)
         
 import deim_utils
 class POD_Newton(Newton):
