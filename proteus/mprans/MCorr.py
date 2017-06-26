@@ -476,7 +476,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.setupFieldStrides()
 
         # (MQL)
-        self.MC_global=None #consistent mass matrix
+        self.MassMatrix=None #consistent mass matrix
         self.rhs_mass_correction = None
 
         comm = Comm.get()
@@ -609,6 +609,57 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.nonlinear_function_evaluations += 1
         if self.globalResidualDummy == None:
             self.globalResidualDummy = numpy.zeros(r.shape,'d')
+    # GET MASS MATRIX # (MQL)
+    def getMassMatrix(self):
+        if (self.MassMatrix is None):
+            rowptr, colind, nzval = self.jacobian.getCSRrepresentation()
+            self.MassMatrix_a = nzval.copy()
+            nnz = nzval.shape[-1] #number of non-zero entries in sparse matrix
+            self.MassMatrix = LinearAlgebraTools.SparseMat(self.nFreeDOF_global[0],
+                                                           self.nFreeDOF_global[0],
+                                                           nnz,
+                                                           self.MassMatrix_a,
+                                                           colind,
+                                                           rowptr)
+
+        cfemIntegrals.zeroJacobian_CSR(self.nNonzerosInJacobian,
+                                       self.MassMatrix)
+        self.mcorr.calculateMassMatrix(#element
+            self.u[0].femSpace.elementMaps.psi,
+            self.u[0].femSpace.elementMaps.grad_psi,
+            self.mesh.nodeArray,
+            self.mesh.elementNodesArray,
+            self.elementQuadratureWeights[('u',0)],
+            self.u[0].femSpace.psi,
+            self.u[0].femSpace.grad_psi,
+            self.u[0].femSpace.psi,
+            self.u[0].femSpace.grad_psi,
+            #element boundary
+            self.u[0].femSpace.elementMaps.psi_trace,
+            self.u[0].femSpace.elementMaps.grad_psi_trace,
+            self.elementBoundaryQuadratureWeights[('u',0)],
+            self.u[0].femSpace.psi_trace,
+            self.u[0].femSpace.grad_psi_trace,
+            self.u[0].femSpace.psi_trace,
+            self.u[0].femSpace.grad_psi_trace,
+            self.u[0].femSpace.elementMaps.boundaryNormals,
+            self.u[0].femSpace.elementMaps.boundaryJacobians,
+            self.mesh.nElements_global,
+            self.coefficients.useMetrics,
+            self.coefficients.epsFactHeaviside,
+            self.coefficients.epsFactDirac,
+            self.coefficients.epsFactDiffusion,
+            self.u[0].femSpace.dofMap.l2g,
+            self.elementDiameter,#self.mesh.elementDiametersArray,
+            self.mesh.nodeDiametersArray,
+            self.u[0].dof,
+            self.coefficients.q_u_ls,
+			self.coefficients.q_n_ls,
+            self.coefficients.q_H_vof,
+            self.coefficients.q_porosity,
+            self.csrRowIndeces[(0,0)],self.csrColumnOffsets[(0,0)],
+            self.MassMatrix)
+
     def getJacobian(self,jacobian):
         cfemIntegrals.zeroJacobian_CSR(self.nNonzerosInJacobian,jacobian)
         self.mcorr.calculateJacobian(#element
