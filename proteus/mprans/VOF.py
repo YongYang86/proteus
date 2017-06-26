@@ -90,8 +90,8 @@ class RKEV(proteus.TimeIntegration.SSP33):
     #    self.dt = DTSET #  don't update t
     def choose_dt(self):
         maxCFL = 1.0e-6
-        #maxCFL = max(maxCFL,globalMax(self.edge_based_cfl.max()))
-        maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max())) #FOR SUPG
+        maxCFL = max(maxCFL,globalMax(self.edge_based_cfl.max()))
+        #maxCFL = max(maxCFL,globalMax(self.cell_based_cfl.max())) #FOR SUPG
         self.dt = self.runCFL/maxCFL
         if self.dtLast == None:
             self.dtLast = self.dt
