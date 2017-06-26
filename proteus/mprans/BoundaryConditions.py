@@ -744,7 +744,8 @@ class BC_RANS(BC_Base):
     def setTwoPhaseVelocityInlet(self, U, waterLevel, smoothing, Uwind=None,
                                  vert_axis=None, air=1., water=0.,
                                  kInflow=None, dissipationInflow=None,
-                                 kInflowAir=None, dissipationInflowAir=None):
+                                 kInflowAir=None, dissipationInflowAir=None,
+                                 rampTime=None):
         """
         Imposes a velocity profile lower than the sea level and an open
         boundary for higher than the sealevel.
@@ -773,7 +774,9 @@ class BC_RANS(BC_Base):
         kInflowAir: float (optional).
             Air K inflow value for turbulent model imposed at the boundary.
         dissipationInflowAir: float (optional).
-            Air dissipation inflow value for turbulent model imposed at the boundary.            
+            Air dissipation inflow value for turbulent model imposed at the boundary.  
+        rampTime: float.
+            Current rump time.
         Below the seawater level, the condition returns the _dirichlet and
         p_advective condition according to the inflow velocity.
         Above the sea water level, the condition returns the gravity as zero,
@@ -803,7 +806,13 @@ class BC_RANS(BC_Base):
                 else:
                     H = 1.0
                 u =  H*Uwind[i] + (1-H)*U[i] 
-                return u
+                if rampTime:
+                    if t < rampTime:
+                        return (u/rampTime)*t
+                    else:
+                        return u
+                else:
+                    return u
             return ux_dirichlet
 
         def inlet_vof_dirichlet(x, t):
@@ -827,9 +836,15 @@ class BC_RANS(BC_Base):
             else:
                 H = 1.0
             u =  H*Uwind + (1-H)*U 
+            if rampTime:
+                if t < rampTime:
+                    u = (u/rampTime)*t 
+            #u0, u1, u2 = get_inlet_ux_dirichlet(0), get_inlet_ux_dirichlet(1), get_inlet_ux_dirichlet(2)])
             # This is the normal velocity, based on the inwards boundary
             # orientation -b_or
             u_p = np.sum(u*np.abs(b_or)) 
+            #b0, b1, b2 = np.abs(b_or[0]), np.abs(b_or[1]), np.abs(b_or[2]) 
+            #u_p = u[0]*b0 + u[1]*b1 + u[2]*b2 
             return -u_p
 
         def inlet_k_dirichlet(x, t):
