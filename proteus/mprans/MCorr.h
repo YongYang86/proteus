@@ -340,7 +340,7 @@ namespace proteus
 				   int* exteriorElementBoundariesArray,
 				   int* elementBoundaryElementsArray,
 				   int* elementBoundaryLocalElementBoundariesArray,
-				   double* H_dof)=0;
+				   double* rhs_mass_correction)=0;
   };
   
   template<class CompKernelType,
@@ -943,6 +943,7 @@ namespace proteus
 	    }//i
 	}//k
     }
+
     void calculateJacobian(//element
 			   double* mesh_trial_ref,
 			   double* mesh_grad_trial_ref,
@@ -1855,10 +1856,14 @@ namespace proteus
 			   int* exteriorElementBoundariesArray,
 			   int* elementBoundaryElementsArray,
 			   int* elementBoundaryLocalElementBoundariesArray,
-			   double* H_dof)
+			   double* rhs_mass_correction)
     {
       for(int eN=0;eN<nElements_global;eN++)
 	{
+	  register double element_rhs_mass_correction[nDOF_test_element];
+	  for (int i=0;i<nDOF_test_element;i++)
+	    element_rhs_mass_correction[i] = 0.;
+
 	  double epsHeaviside;
 	  //loop over quadrature points and compute integrands
 	  for  (int k=0;k<nQuadraturePoints_element;k++)
@@ -1875,6 +1880,7 @@ namespace proteus
 		//u_test_dV[nDOF_trial_element],
 		//u_grad_test_dV[nDOF_test_element*nSpace],
 		dV,x,y,z,
+		u_test_dV[nDOF_test_element],
 		G[nSpace*nSpace],G_dd_G,tr_G,h_phi;
 	      //
 	      //compute solution and gradients at quadrature points
@@ -1898,6 +1904,11 @@ namespace proteus
 	      //get the physical integration weight
 	      dV = fabs(jacDet)*dV_ref[k];
 	      ck.calculateG(jacInv,G,G_dd_G,tr_G);
+	      
+	      // precalculate test function times integration weight
+	      for (int j=0;j<nDOF_trial_element;j++)
+		u_test_dV[j] = u_test_ref[k*nDOF_trial_element+j]*dV;
+
 	      /* double dir[nSpace]; */
 	      /* double norm = 1.0e-8; */
 	      /* for (int I=0;I<nSpace;I++) */
@@ -1909,12 +1920,19 @@ namespace proteus
 	      /* ck.calculateGScale(G,dir,h_phi); */
 	      epsHeaviside=epsFactHeaviside*(useMetrics*h_phi+(1.0-useMetrics)*elementDiameter[eN]);
 	      q_H[eN_k] = q_porosity[eN_k]*smoothedHeaviside(epsHeaviside,q_phi[eN_k]);
+	      
+	      for (int i=0;i<nDOF_trial_element;i++)
+		element_rhs_mass_correction [i] += q_H[eN_k]*u_test_dV[i];
+
 	    }//k
+	  // distribute rhs for mass correction 
 	  for (int i=0;i<nDOF_trial_element;i++)
 	    {
-	      int eN_i = eN*nDOF_trial_element + i;	      
-	      epsHeaviside = epsFactHeaviside*nodeDiametersArray[mesh_l2g[eN_i]];//cek hack, only works if isoparametric, but we can fix by including interpolation points
-	      H_dof[phi_l2g[eN_i]] = smoothedHeaviside(epsHeaviside,phi_dof[phi_l2g[eN_i]]);//cek hack, only works if H and phi in same FEM space, but we can fix by passing in H_l2g
+	      int eN_i = eN*nDOF_trial_element + i;
+	      //epsHeaviside = epsFactHeaviside*nodeDiametersArray[mesh_l2g[eN_i]];//cek hack, only works if isoparametric, but we can fix by including interpolation points
+	      //H_dof [phi_l2g[eN_i]] = smoothedHeaviside(epsHeaviside,phi_dof[phi_l2g[eN_i]]);//cek hack, only works if H and phi in same FEM space, but we can fix by passing in H_l2g
+	      int gi = phi_l2g[eN_i];
+	      rhs_mass_correction[gi] += element_rhs_mass_correction[i];
 	    }
 	}//elements
     }

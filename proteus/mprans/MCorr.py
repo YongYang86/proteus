@@ -475,6 +475,10 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.calculateQuadrature()
         self.setupFieldStrides()
 
+        # (MQL)
+        self.MC_global=None #consistent mass matrix
+        self.rhs_mass_correction = None
+
         comm = Comm.get()
         self.comm=comm
         if comm.size() > 1:
@@ -936,6 +940,13 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.mesh.elementBoundaryElementsArray,
             self.mesh.elementBoundaryLocalElementBoundariesArray))
     def setMassQuadrature(self):
+        #Compute mass matrix
+        #Set rhs of mass correction to zero
+        if self.rhs_mass_correction is None:
+            self.rhs_mass_correction = numpy.zeros(self.coefficients.vofModel.u[0].dof.shape,'d')
+        else: 
+            self.rhs_mass_correction.fill(0.0)
+
         self.mcorr.setMassQuadrature(#element
             self.u[0].femSpace.elementMaps.psi,
             self.u[0].femSpace.elementMaps.grad_psi,
@@ -983,7 +994,8 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.mesh.exteriorElementBoundariesArray,
             self.mesh.elementBoundaryElementsArray,
             self.mesh.elementBoundaryLocalElementBoundariesArray,
-            self.coefficients.vofModel.u[0].dof)
+            self.rhs_mass_correction) # (MQL): compute rhs for L2 projection
+            #self.coefficients.vofModel.u[0].dof)
         #self.coefficients.q_H_vof.flat[:]=777.0
     def calculateSolutionAtQuadrature(self):
         pass

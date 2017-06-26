@@ -313,7 +313,7 @@ cdef extern from "MCorr.h" namespace "proteus":
 				   int* exteriorElementBoundariesArray,
 				   int* elementBoundaryElementsArray,
 				   int* elementBoundaryLocalElementBoundariesArray,
-                               double* H_dof)
+                               double* rhs_mass_correction)
     MCorr_base* newMCorr(int nSpaceIn,
                        int nQuadraturePoints_elementIn,
                        int nDOF_mesh_trial_elementIn,
@@ -935,7 +935,7 @@ cdef class cMCorr_base:
                          numpy.ndarray exteriorElementBoundariesArray,
                          numpy.ndarray elementBoundaryElementsArray,
                          numpy.ndarray elementBoundaryLocalElementBoundariesArray,
-                         numpy.ndarray H_dof):
+                         numpy.ndarray rhs_mass_correction):
        self.thisptr.setMassQuadrature(<double*> mesh_trial_ref.data,
                                        <double*> mesh_grad_trial_ref.data,
                                        <double*> mesh_dof.data,
@@ -981,4 +981,4 @@ cdef class cMCorr_base:
                                        <int*> exteriorElementBoundariesArray.data,
                                        <int*> elementBoundaryElementsArray.data,
                                        <int*> elementBoundaryLocalElementBoundariesArray.data,
-                                       <double*> H_dof.data)
+                                       <double*> rhs_mass_correction.data)
