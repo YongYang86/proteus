@@ -370,11 +370,11 @@ class BC_RANS(BC_Base):
         xx[2] = x[2]
         return self.waves.__cpp_calculate_vof(xx, t)
 
-     def setTwoPhaseVelocityInlet(self, U, waterLevel, smoothing, Uwind=None,
+    def setTwoPhaseVelocityInlet(self, U, waterLevel, smoothing, Uwind=None,
                                  vert_axis=None, air=1., water=0.,
                                  kInflow=None, dissipationInflow=None,
                                  kInflowAir=None, dissipationInflowAir=None,
-                                 rampTime=None):
+                                 rampTime=None, tInRamp=None):
         """
         Imposes a velocity profile lower than the sea level and an open
         boundary for higher than the sealevel.
@@ -405,7 +405,9 @@ class BC_RANS(BC_Base):
         dissipationInflowAir: float (optional).
             Air dissipation inflow value for turbulent model imposed at the boundary.  
         rampTime: float.
-            Current rump time.
+             switch ON ramp time function for current.
+        tInRamp: float.
+             set the initial time step for ramp fuction.
         Below the seawater level, the condition returns the _dirichlet and
         p_advective condition according to the inflow velocity.
         Above the sea water level, the condition returns the gravity as zero,
@@ -436,12 +438,11 @@ class BC_RANS(BC_Base):
                     H = 1.0
                 u =  H*Uwind[i] + (1-H)*U[i] 
                 if rampTime:
-                    if t < rampTime:
-                        return (u/rampTime)*t
+                    if t < tInRamp:
+                        u = 0.
                     else:
-                        return u
-                else:
-                    return u
+                        u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
+                return u
             return ux_dirichlet
 
         def inlet_vof_dirichlet(x, t):
@@ -466,8 +467,10 @@ class BC_RANS(BC_Base):
                 H = 1.0
             u =  H*Uwind + (1-H)*U 
             if rampTime:
-                if t < rampTime:
-                    u = (u/rampTime)*t 
+                if t < tInRamp:
+                    u = 0.
+                else:
+                    u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
             # This is the normal velocity, based on the inwards boundary
             # orientation -b_or
             u_p = np.sum(u*np.abs(b_or)) 
@@ -510,7 +513,7 @@ class BC_RANS(BC_Base):
     def setHydrostaticPressureOutletWithDepth(self, seaLevel, rhoUp, rhoDown, g,
                                               refLevel, smoothing, U=None, Uwind=None,
                                               pRef=0.0, vert_axis=None,
-                                              air=1.0, water=0.0):
+                                              air=1.0, water=0.0, rampTime=None, tInRamp=None):
         """
         Returns the pressure and vof profile based on the known depth.
         If the boundary is aligned with one of the main axes, sets the tangential
@@ -520,12 +523,22 @@ class BC_RANS(BC_Base):
         
         Parameters
         ----------        
-        rhoUp: Phase density of the upper part.
-        rhoDown: Phase density of the lower part.
-        g: Gravitational acceleration vector.
-        refLevel: Level at which pressure = pRef.
-        pRef: Reference value for the pressure at x[vert_axis]=refLevel, by default set to 0.
-        vert_axis: index of vertical in position vector, must always be aligned with gravity, by default set to 1.
+        rhoUp: float.
+            Phase density of the upper part.
+        rhoDown: float.
+            Phase density of the lower part.
+        g: array_like.
+            Gravitational acceleration vector.
+        refLevel: float.
+            Level at which pressure = pRef.
+        pRef: float.
+            Reference value for the pressure at x[vert_axis]=refLevel, by default set to 0.
+        vert_axis: float.
+            index of vertical in position vector, must always be aligned with gravity, by default set to 1.
+        rampTime: float.
+            switch ON ramp time function for current.
+        tInRamp: float.
+             set the initial time step for ramp fuction.
         """
         self.reset()
 
@@ -561,18 +574,15 @@ class BC_RANS(BC_Base):
         self.u_dirichlet.resetBC() 
         self.v_dirichlet.resetBC() 
         self.w_dirichlet.resetBC() 
-        self.u_dirichlet.setConstantBC(0.)
-        self.u_diffusive.setConstantBC(0.)
-        self.v_dirichlet.setConstantBC(0.)
-        self.w_dirichlet.setConstantBC(0.)
         self.p_dirichlet.uOfXT = hydrostaticPressureOutletWithDepth_p_dirichlet
         self.vof_dirichlet.uOfXT = hydrostaticPressureOutletWithDepth_vof_dirichlet
         self.k_dirichlet.resetBC() 
         self.dissipation_dirichlet.resetBC()         
         self.k_advective.resetBC()
         self.dissipation_advective.resetBC()        
-        self.k_diffusive.setConstantBC(0.0) 
-        self.dissipation_diffusive.setConstantBC(0.0)
+        self.u_diffusive.setConstantBC(0.)
+        self.k_diffusive.setConstantBC(0.) 
+        self.dissipation_diffusive.setConstantBC(0.)
 
         if U != None:            
             def get_inlet_ux_dirichlet(i):
@@ -584,7 +594,13 @@ class BC_RANS(BC_Base):
                         H = smoothedHeaviside(smoothing/2., phi-smoothing/2.)
                     else:
                         H = 1.0
-                    return H*Uwind[i] + (1-H)*U[i]
+                    u = H*Uwind[i] + (1-H)*U[i]
+                    if rampTime:
+                        if t < tInRamp:
+                            u = 0.0
+                        else:
+                            u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
+                    return u
                 return ux_dirichlet
 
             if Uwind is None:

@@ -703,24 +703,29 @@ class  SteadyCurrent:
             Still water level
     rampTime : float
             Ramp time for current
-
+    tInRamp: float.
+         set the initial time step for ramp fuction.
             """
     def __init__(self,
                  U,
                  mwl,
-                 rampTime = 0.):
+                 rampTime = 0.,
+                 tInRamp = 0.):
         self.mwl = mwl
         self.U = U
         self.ramp = rampTime
+        self.tIn = tInRamp
+
     def eta(self,x,t):
-        """Calculates free surface elevation (SolitaryWave class)
+        """
+        Calculates free surface elevation (SolitaryWave class)
+        
         Parameters
         ----------
         x : numpy.ndarray
             Position vector
         t : float
             Time variable
-
         Returns
         --------
         float
@@ -728,8 +733,11 @@ class  SteadyCurrent:
 
         """
         return  self.mwl
+
     def u(self,x,t):
-        """Calculates wave velocity vector (SolitaryWave class).
+        """
+        Calculates wave velocity vector (SolitaryWave class).
+        
         Parameters
         ----------
         x : numpy.ndarray
@@ -743,11 +751,10 @@ class  SteadyCurrent:
             Velocity vector as 1D array
 
         """
-        if(t<self.ramp):
-            return self.U*t/self.ramp
+        if(t<self.tIn):
+            return 0.0
         else:
-            return self.U
-
+            return self.U*min( (t-self.tIn)/self.ramp  ,  1.0 )
 
 
 
