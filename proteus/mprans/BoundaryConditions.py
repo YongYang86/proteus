@@ -428,7 +428,7 @@ class BC_RANS(BC_Base):
             
         U = np.array(U)
         Uwind = np.array(Uwind)
-        if U2: U2 = np.array(U2)
+        if U2 is not None: U2 = np.array(U2)
             
         def get_inlet_ux_dirichlet(i):
             def ux_dirichlet(x, t):
@@ -440,7 +440,7 @@ class BC_RANS(BC_Base):
                 else:
                     H = 1.0
                 u =  H*Uwind[i] + (1-H)*U[i]
-                if U2: u2 = H*Uwind[i] + (1-H)*U2[i]
+                if U2 is not None: u2 = H*Uwind[i] + (1-H)*U2[i]
                 if rampTime:
                     if t < tInRamp:
                         u = 0.
@@ -472,7 +472,7 @@ class BC_RANS(BC_Base):
             else:
                 H = 1.0
             u =  H*Uwind + (1-H)*U
-            if U2: u2 = H*Uwind[i] + (1-H)*U2[i]
+            if U2 is not None: u2 = H*Uwind + (1-H)*U2
             if rampTime:
                 if t < tInRamp:
                     u = 0.
@@ -606,9 +606,7 @@ class BC_RANS(BC_Base):
                     else:
                         H = 1.0
                     u = H*Uwind[i] + (1-H)*U[i]
-                    if U2:
-                        U2 = np.array(U2)
-                        u2 = H*Uwind[i] + (1-H)*U2[i]
+                    if U2 is not None: u2 = H*Uwind[i] + (1-H)*U2[i]
                     if rampTime:
                         if t < tInRamp:
                             u = 0.
@@ -616,10 +614,9 @@ class BC_RANS(BC_Base):
                             u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
                         elif t > tInRamp2:
                             u = u2*min( (t-tInRamp2)/rampTime2, 1.0) + u
-            if Uwind is None:
-                Uwind = np.zeros(3)
             U = np.array(U)
-            Uwind = np.array(Uwind)
+            if Uwind is not None: Uwind = np.array(Uwind)
+            if U2 is not None: U2 = np.array(U2)
 
             self.u_dirichlet.uOfXT = get_inlet_ux_dirichlet(0)
             self.v_dirichlet.uOfXT = get_inlet_ux_dirichlet(1)

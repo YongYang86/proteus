@@ -710,11 +710,18 @@ class  SteadyCurrent:
                  U,
                  mwl,
                  rampTime = 0.,
-                 tInRamp = 0.):
+                 tInRamp = 0.,
+                 U2=0.,
+                 rampTime2 = 0.,
+                 tInRamp2 = 0.
+                 ):
         self.mwl = mwl
         self.U = U
         self.ramp = rampTime
         self.tIn = tInRamp
+        self.U2 = U2
+        self.ramp2 = rampTime2
+        self.tIn2 = tInRamp2
 
     def eta(self,x,t):
         """
@@ -751,10 +758,14 @@ class  SteadyCurrent:
             Velocity vector as 1D array
 
         """
-        if(t<self.tIn):
-            return 0.0
-        else:
+
+        if t < self.tIn:
+            return 0.
+        elif t < (self.tIn + self.ramp):
             return self.U*min( (t-self.tIn)/self.ramp  ,  1.0 )
+        elif t > self.tIn2:
+            return self.U2*min( (t-self.tIn2)/self.ramp2, 1.0) + self.U
+
 
 
 
