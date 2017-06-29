@@ -720,7 +720,7 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
         numIter=0
         self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
         if(doRedistancing):
-            if (self.F.coefficients.pure_redistancing==True):                
+            if (self.F.coefficients.pure_redistancing==True):
                 self.F.edge_based_cfl.fill(self.F.coefficients.cfl_redistancing/self.F.dt_redistancing)
                 self.F.coefficients.maxIter_redistancing=1
             while (self.F.L2_norm_redistancing > self.F.coefficients.redistancing_tolerance*self.F.mesh.h
@@ -774,12 +774,146 @@ class ExplicitConsistentMassMatrixForVOF(Newton):
         ############
         # FCT STEP #
         ############ 
-        self.F.FCTStep()
+        #self.F.FCTStep()
         ###########################################
         # DISTRIBUTE SOLUTION FROM u to u[ci].dof #
         ###########################################
         self.computeResidual(u,r,b)
-        
+
+class NewtonWithL2ProjectionForMassCorrection(Newton):
+    """
+     This is a fake solver meant to be used with optimized code
+    A simple iterative solver that is Newton's method
+    if you give it the right Jacobian
+    """
+    def solve(self,u,r=None,b=None,par_u=None,par_r=None):
+        """
+        Solve F(u) = b
+
+        b -- right hand side
+        u -- solution
+        r -- F(u) - b
+        """
+
+        import Viewers
+        memory()
+        if self.linearSolver.computeEigenvalues:
+            self.u0[:]=u
+        r=self.solveInitialize(u,r,b)
+        if par_u != None:
+            #allow linear solver to know what type of assembly to use
+            self.linearSolver.par_fullOverlap = self.par_fullOverlap
+            #no overlap
+            if not self.par_fullOverlap:
+                par_r.scatter_reverse_add()
+            else:
+                #no overlap or overlap (until we compute norms over only owned dof)
+                par_r.scatter_forward_insert()
+
+        self.norm_r0 = self.norm(r)
+        self.norm_r_hist = []
+        self.norm_du_hist = []
+        self.gammaK_max=0.0
+        self.linearSolverFailed = False
+        while (not self.converged(r) and
+               not self.failed()):
+            logEvent("   Newton it %d norm(r) = %12.5e  \t\t norm(r)/(rtol*norm(r0)+atol) = %g test=%s"
+                % (self.its-1,self.norm_r,(self.norm_r/(self.rtol_r*self.norm_r0+self.atol_r)),self.convergenceTest),level=1)
+            if self.updateJacobian or self.fullNewton:
+                self.updateJacobian = False
+                self.F.getJacobian(self.J)
+                # Set linear solver to be the jacobian 
+                self.linearSolver.L = self.J
+                # Save sparse factor for Jacobian. Just for the first time
+                if (self.F.Jacobian_sparseFactor is None):
+                    self.F.Jacobian_sparseFactor = self.linearSolver.sparseFactor #(MQL)
+                # Set sparse factor to be the jacobian sparse factor 
+                self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
+                if self.linearSolver.computeEigenvalues:
+                    logEvent("Calculating eigenvalues of J^t J")
+                    self.JLast[:]=self.J
+                    self.J_t_J[:]=self.J
+                    self.J_t_J *= numpy.transpose(self.J)
+                    self.JLsolver.prepare()#eigenvalue calc happens in prepare
+                    self.norm_2_J_current = sqrt(max(self.JLsolver.eigenvalues_r))
+                    try:
+                        self.norm_2_Jinv_current = 1.0/sqrt(min(self.JLsolver.eigenvalues_r))
+                    except:
+                        logEvent("Norm of J_inv_current is singular to machine prection 1/sqrt("+`min(self.JLsolver.eigenvalues_r)`+")")
+                        self.norm_2_Jinv_current = np.inf
+                    self.kappa_current = self.norm_2_J_current*self.norm_2_Jinv_current
+                    self.betaK_current = self.norm_2_Jinv_current
+                self.linearSolver.prepare(b=r)            
+            self.du[:]=0.0
+            # Set matrix of linear soler to be the Jacobian 
+            self.linearSolver.L = self.J
+            # Set sparse factor 
+            self.linearSolver.sparseFactor = self.F.Jacobian_sparseFactor
+            if not self.directSolver:
+                if self.EWtol:
+                    self.setLinearSolverTolerance(r)
+            if not self.linearSolverFailed:
+                self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+                self.linearSolverFailed = self.linearSolver.failed()
+            u-=self.du
+            if par_u != None:
+                par_u.scatter_forward_insert()
+            self.computeResidual(u,r,b)
+            if par_r != None:
+                #no overlap
+                if not self.par_fullOverlap:
+                    par_r.scatter_reverse_add()
+                else:
+                    par_r.scatter_forward_insert()
+        else:
+            logEvent("   Newton it %d norm(r) = %12.5e  \t\t norm(r)/(rtol*norm(r0)+atol) = %12.5e"
+                     % (self.its,self.norm_r,(self.norm_r/(self.rtol_r*self.norm_r0+self.atol_r))),level=1)
+            logEvent(memory("Newton","Newton"),level=4)
+            if (self.failedFlag == True):
+                return self.failedFlag
+            else:
+                logEvent("+++++ L2 projection of mass-corrected VOF +++++",level=2)
+                if (self.F.MassMatrix is None): 
+                    self.F.getMassMatrix()
+                    # Set matrix of linear solver to be the Mass Matrix
+                    self.linearSolver.L = self.F.MassMatrix
+                    # Create a sparse factor for the Mass Matrix
+                    if (self.F.MassMatrix_sparseFactor is None):
+                        self.F.MassMatrix_sparseFactor = superluWrappers.SparseFactor(self.linearSolver.n)
+                    # reference the self.linearSolver.sparseFactor to use the new sparse Factor
+                    self.linearSolver.sparseFactor = self.F.MassMatrix_sparseFactor
+                    # Compute the new sparse factor; i.e., self.F.MassMatrix_sparseFactor
+                    self.linearSolver.prepare(b=r)
+                # Compute rhs for L2 projection and low (lumped) L2 projection
+                self.F.setMassQuadrature()
+                r[:] = self.F.rhs_mass_correction
+                # Solve mass matrix for L2 projection
+                self.du[:]=0.0
+                # Set linear matrix to be Mass Matrix
+                self.linearSolver.L = self.F.MassMatrix
+                # Set sparse factors to be the sparse factors of the mass matrix
+                self.linearSolver.sparseFactor = self.F.MassMatrix_sparseFactor
+                if not self.directSolver:
+                    if self.EWtol:
+                        self.setLinearSolverTolerance(r)
+                if not self.linearSolverFailed:
+                    self.linearSolver.solve(u=self.du,b=r,par_u=self.par_du,par_b=par_r)
+                    self.linearSolverFailed = self.linearSolver.failed()
+                # copy the solution to the L2p vector
+                self.F.L2p_vof_mass_correction[:] = self.du
+                # Perform limitation on L2 projection 
+                self.F.FCTStep()
+                # Pass the solution to the DOFs of the VOF model
+                #self.F.coefficients.vofModel.u[0].dof[:] = self.du
+                self.F.coefficients.vofModel.u[0].dof[:] = self.F.limited_L2p_vof_mass_correction
+
+        logEvent("   Newton it %d norm(r) = %12.5e  \t\t norm(r)/(rtol*norm(r0)+atol) = %12.5e"
+            % (self.its,self.norm_r,(self.norm_r/(self.rtol_r*self.norm_r0+self.atol_r))),level=1)
+        logEvent(memory("Newton","Newton"),level=4)
+
+        # Nonlinear solved finished. 
+        # L2 projection of corrected VOF solution at quad points 
+
 import deim_utils
 class POD_Newton(Newton):
     """Newton's method on the reduced order system based on POD"""
@@ -2859,6 +2993,8 @@ def multilevelNonlinearSolverChooser(nonlinearOperatorList,
         levelNonlinearSolverType = ExplicitConsistentMassMatrixWithRedistancing
     elif (levelNonlinearSolverType == ExplicitConsistentMassMatrixForVOF):
         levelNonlinearSolverType = ExplicitConsistentMassMatrixForVOF
+    elif (levelNonlinearSolverType == NewtonWithL2ProjectionForMassCorrection):
+        levelNonlinearSolverType = NewtonWithL2ProjectionForMassCorrection
     elif (multilevelNonlinearSolverType == Newton or
         multilevelNonlinearSolverType == NLJacobi or
         multilevelNonlinearSolverType == NLGaussSeidel or

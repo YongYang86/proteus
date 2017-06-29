@@ -12,6 +12,16 @@ namespace proteus
   {
   public:
     virtual ~MCorr_base(){}
+    virtual void FCTStep(int NNZ, //number on non-zero entries on sparsity pattern
+			 int numDOFs, //number of DOFs
+			 double* lumped_mass_matrix, //lumped mass matrix (as vector)
+			 double* solH, //DOFs of high order solution at tnp1
+			 double* solL,
+			 double* limited_solution,
+			 int* csrRowIndeces_DofLoops, //csr row indeces 
+			 int* csrColumnOffsets_DofLoops, //csr column offsets 
+			 double* MassMatrix //mass matrix
+			 )=0;
     virtual void calculateResidual(//element
 				   double* mesh_trial_ref,
 				   double* mesh_grad_trial_ref,
@@ -94,7 +104,8 @@ namespace proteus
 				   double* q_H,
 				   double* q_porosity,
 				   int* csrRowIndeces_u_u,int* csrColumnOffsets_u_u,
-				   double* globalJacobian)=0;
+				   double* globalJacobian, 
+				     double* globalLumpedMassMatrix)=0;
     virtual void calculateJacobian(//element
 				   double* mesh_trial_ref,
 				   double* mesh_grad_trial_ref,
@@ -376,7 +387,10 @@ namespace proteus
 				   int* exteriorElementBoundariesArray,
 				   int* elementBoundaryElementsArray,
 				   int* elementBoundaryLocalElementBoundariesArray,
-				   double* rhs_mass_correction)=0;
+				   double* rhs_mass_correction, 
+				   double* lumped_L2p_vof_mass_correction, 
+				   double* lumped_mass_matrix,
+				   int numDOFs)=0;
   };
   
   template<class CompKernelType,
@@ -447,6 +461,84 @@ namespace proteus
     {
       r = porosity*smoothedHeaviside(epsHeaviside,phi+u) - H;
       dr = porosity*smoothedDirac(epsDirac,phi+u);
+    }
+
+    void FCTStep(int NNZ, //number on non-zero entries on sparsity pattern
+		 int numDOFs, //number of DOFs
+		 double* lumped_mass_matrix, //lumped mass matrix (as vector)
+		 double* solH, //DOFs of high order solution at tnp1
+		 double* solL,
+		 double* limited_solution,
+		 int* csrRowIndeces_DofLoops, //csr row indeces 
+		 int* csrColumnOffsets_DofLoops, //csr column offsets 
+		 double* MassMatrix //mass matrix
+		 )
+    {
+      register double Rpos[numDOFs], Rneg[numDOFs];
+      register double FluxCorrectionMatrix[NNZ];
+      //////////////////
+      // LOOP in DOFs //
+      //////////////////
+      int ij=0;
+      for (int i=0; i<numDOFs; i++)
+	{
+	  //read some vectors 
+	  double solHi = solH[i];
+	  double solLi = solL[i];
+	  double mi = lumped_mass_matrix[i];
+
+	  double mini=0., maxi=1.0;
+	  double Pposi=0, Pnegi=0;
+	  // LOOP OVER THE SPARSITY PATTERN (j-LOOP)//
+	  for (int offset=csrRowIndeces_DofLoops[i]; offset<csrRowIndeces_DofLoops[i+1]; offset++)
+	    {
+	      int j = csrColumnOffsets_DofLoops[offset];
+	      // i-th row of flux correction matrix 
+	      FluxCorrectionMatrix[ij] = ((i==j ? 1. : 0.)*mi - MassMatrix[ij]) * (solH[j]-solHi);
+
+	      ///////////////////////
+	      // COMPUTE P VECTORS //
+	      ///////////////////////
+	      Pposi += FluxCorrectionMatrix[ij]*((FluxCorrectionMatrix[ij] > 0) ? 1. : 0.);
+	      Pnegi += FluxCorrectionMatrix[ij]*((FluxCorrectionMatrix[ij] < 0) ? 1. : 0.);
+
+	      //update ij 
+	      ij+=1;
+	    }
+	  ///////////////////////
+	  // COMPUTE Q VECTORS //
+	  ///////////////////////
+	  double Qposi = mi*(maxi-solLi);
+	  double Qnegi = mi*(mini-solLi);
+
+	  ///////////////////////
+	  // COMPUTE R VECTORS //
+	  ///////////////////////
+	  Rpos[i] = ((Pposi==0) ? 1. : std::min(1.0,Qposi/Pposi));
+	  Rneg[i] = ((Pnegi==0) ? 1. : std::min(1.0,Qnegi/Pnegi));
+	} // i DOFs
+      
+      //////////////////////
+      // COMPUTE LIMITERS // 
+      //////////////////////
+      ij=0;
+      for (int i=0; i<numDOFs; i++)
+	{
+	  double ith_Limiter_times_FluxCorrectionMatrix = 0.;
+	  double Rposi = Rpos[i], Rnegi = Rneg[i];
+	  // LOOP OVER THE SPARSITY PATTERN (j-LOOP)//
+	  for (int offset=csrRowIndeces_DofLoops[i]; offset<csrRowIndeces_DofLoops[i+1]; offset++)
+	    {
+	      int j = csrColumnOffsets_DofLoops[offset];
+	      ith_Limiter_times_FluxCorrectionMatrix += 
+		((FluxCorrectionMatrix[ij]>0) ? std::min(Rposi,Rneg[j]) : std::min(Rnegi,Rpos[j])) 
+		* FluxCorrectionMatrix[ij];
+	      //ith_Limiter_times_FluxCorrectionMatrix += FluxCorrectionMatrix[ij];
+	      //update ij
+	      ij+=1;
+	    }
+	  limited_solution[i] = fmax(0.0,solL[i] + 1./lumped_mass_matrix[i]*ith_Limiter_times_FluxCorrectionMatrix);
+	}
     }
 
     inline void calculateElementResidual(//element
@@ -873,14 +965,18 @@ namespace proteus
 				     double* q_H,
 				     double* q_porosity,
 				     double* elementMassMatrix,
+				     double* elementLumpedMassMatrix,
 				     double* element_u,
 				     int eN)
     {
       for (int i=0;i<nDOF_test_element;i++)
-	for (int j=0;j<nDOF_trial_element;j++)
-	  {
-	    elementMassMatrix[i*nDOF_trial_element+j]=0.0;
-	  }
+	{
+	  elementLumpedMassMatrix[i] = 0.0;
+	  for (int j=0;j<nDOF_trial_element;j++)
+	    {
+	      elementMassMatrix[i*nDOF_trial_element+j]=0.0;
+	    }
+	}
       double epsHeaviside,epsDirac,epsDiffusion;
       for  (int k=0;k<nQuadraturePoints_element;k++)
 	{
@@ -968,12 +1064,9 @@ namespace proteus
 	    {
 	      //int eN_k_i=eN_k*nDOF_test_element+i;
 	      //int eN_k_i_nSpace=eN_k_i*nSpace;
-	      int i_nSpace=i*nSpace;
+	      elementLumpedMassMatrix[i] += u_test_dV[i];
 	      for(int j=0;j<nDOF_trial_element;j++) 
 		{ 
-		  //int eN_k_j=eN_k*nDOF_trial_element+j;
-		  //int eN_k_j_nSpace = eN_k_j*nSpace;
-		  int j_nSpace = j*nSpace;
 		  elementMassMatrix[i*nDOF_trial_element+j] += u_trial_ref[k*nDOF_trial_element+j]*u_test_dV[i];
 		}//j
 	    }//i
@@ -1019,14 +1112,15 @@ namespace proteus
 			   double* q_H,
 			   double* q_porosity,
 			   int* csrRowIndeces_u_u,int* csrColumnOffsets_u_u,
-			   double* globalMassMatrix)
+			   double* globalMassMatrix, 
+			     double* globalLumpedMassMatrix)
     {
       //
       //loop over elements to compute volume integrals and load them into the element Jacobians and global Jacobian
       //
       for(int eN=0;eN<nElements_global;eN++)
 	{
-	  register double  elementMassMatrix[nDOF_test_element*nDOF_trial_element],element_u[nDOF_trial_element];
+	  register double  elementMassMatrix[nDOF_test_element*nDOF_trial_element],element_u[nDOF_trial_element], elementLumpedMassMatrix[nDOF_trial_element];
 	  for (int j=0;j<nDOF_trial_element;j++)
 	    {
 	      register int eN_j = eN*nDOF_trial_element+j;
@@ -1063,7 +1157,8 @@ namespace proteus
 				   q_normal_phi,
 				   q_H,
 				   q_porosity,
-				   elementMassMatrix,
+				     elementMassMatrix,
+				     elementLumpedMassMatrix,
 				   element_u,
 				   eN);
 	  //
@@ -1072,6 +1167,8 @@ namespace proteus
 	  for (int i=0;i<nDOF_test_element;i++)
 	    {
 	      int eN_i = eN*nDOF_test_element+i;
+	      int gi = u_l2g[eN_i];
+	      globalLumpedMassMatrix[gi] += elementLumpedMassMatrix[i];
 	      for (int j=0;j<nDOF_trial_element;j++)
 		{
 		  int eN_i_j = eN_i*nDOF_trial_element+j;
@@ -2147,14 +2244,16 @@ namespace proteus
 			   int* exteriorElementBoundariesArray,
 			   int* elementBoundaryElementsArray,
 			   int* elementBoundaryLocalElementBoundariesArray,
-			   double* rhs_mass_correction)
+			   double* rhs_mass_correction,
+			   double* lumped_L2p_vof_mass_correction, 
+			   double* lumped_mass_matrix,
+			   int numDOFs)
     {
       for(int eN=0;eN<nElements_global;eN++)
 	{
 	  register double element_rhs_mass_correction[nDOF_test_element];
 	  for (int i=0;i<nDOF_test_element;i++)
 	    element_rhs_mass_correction[i] = 0.;
-
 	  double epsHeaviside;
 	  //loop over quadrature points and compute integrands
 	  for  (int k=0;k<nQuadraturePoints_element;k++)
@@ -2211,10 +2310,9 @@ namespace proteus
 	      /* ck.calculateGScale(G,dir,h_phi); */
 	      epsHeaviside=epsFactHeaviside*(useMetrics*h_phi+(1.0-useMetrics)*elementDiameter[eN]);
 	      q_H[eN_k] = q_porosity[eN_k]*smoothedHeaviside(epsHeaviside,q_phi[eN_k]);
-	      
+
 	      for (int i=0;i<nDOF_trial_element;i++)
 		element_rhs_mass_correction [i] += q_H[eN_k]*u_test_dV[i];
-
 	    }//k
 	  // distribute rhs for mass correction 
 	  for (int i=0;i<nDOF_trial_element;i++)
@@ -2226,6 +2324,11 @@ namespace proteus
 	      rhs_mass_correction[gi] += element_rhs_mass_correction[i];
 	    }
 	}//elements
+      for (int i=0; i<numDOFs; i++)
+	{
+	  double mi = lumped_mass_matrix[i];
+	  lumped_L2p_vof_mass_correction[i] = 1./mi*rhs_mass_correction[i];
+	}
     }
   };//MCorr
 

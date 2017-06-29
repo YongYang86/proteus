@@ -1176,7 +1176,8 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             degree_polynomial,
             self.u[0].dof,
             #mwf need another argument for u_dof_old to represent u^n
-            self.timeIntegration.u_dof_stage[0][self.timeIntegration.lstage], #u last stage and u^n right now
+            #self.timeIntegration.u_dof_stage[0][self.timeIntegration.lstage], #u last stage and u^n right now
+            self.coefficients.u_dof_old, # TMP
             self.coefficients.u_dof_old,
             self.coefficients.u_dof_old_old,
             self.coefficients.q_v,
@@ -1246,8 +1247,6 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         logEvent("...   Current dt = " + str(self.timeIntegration.dt),level=4)
         logEvent("...   Maximum Cell Based CFL = " + str(cell_based_cflMax),level=2)
         logEvent("...   Maximum Edge Based CFL = " + str(edge_based_cflMax),level=2)
-
-        #input("STOP")
 
         if self.stabilization:
             self.stabilization.accumulateSubgridMassHistory(self.q)

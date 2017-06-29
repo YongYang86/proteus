@@ -53,7 +53,7 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         self.h=mesh.h
         self.epsHeaviside = self.epsFactHeaviside*mesh.h
         self.epsDirac = self.epsFactDirac*mesh.h
-        self.epsDiffusion = self.epsFactDiffusion*mesh.h
+        self.epsDiffusion = self.epsFactDiffusion*mesh.h**2 #MQL
     def attachModels(self,modelList):
         import copy
         logEvent("Attaching models in LevelSetConservation")
@@ -137,8 +137,8 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
             self.lsModel.ebqe[('u',0)] += self.massCorrModel.ebqe[('u',0)]
 	    self.lsModel.q[('grad(u)',0)] += self.massCorrModel.q[('grad(u)',0)]
 	    self.lsModel.ebqe[('grad(u)',0)] += self.massCorrModel.ebqe[('grad(u)',0)]
-            #vof
-            self.massCorrModel.setMassQuadrature()
+            #vof. (Mql). I am doing this within the solver for MCorr
+            #self.massCorrModel.setMassQuadrature()
             #self.vofModel.q[('u',0)] += self.massCorrModel.q[('r',0)]
             #####print "********************max VOF************************",max(self.vofModel.q[('u',0)].flat[:])
         if self.checkMass:
@@ -477,7 +477,13 @@ class LevelModel(proteus.Transport.OneLevelTransport):
 
         # (MQL)
         self.MassMatrix=None #consistent mass matrix
+        self.LumpedMassMatrix=None
         self.rhs_mass_correction = None
+        self.MassMatrix_sparseFactor=None
+        self.Jacobian_sparseFactor=None
+        self.lumped_L2p_vof_mass_correction=None
+        self.limited_L2p_vof_mass_correction=None
+        self.L2p_vof_mass_correction=None
 
         comm = Comm.get()
         self.comm=comm
@@ -538,6 +544,22 @@ class LevelModel(proteus.Transport.OneLevelTransport):
                                  self.nElementBoundaryQuadraturePoints_elementBoundary,
                                  compKernelFlag)
     #mwf these are getting called by redistancing classes,
+    def FCTStep(self):
+        rowptr, colind, MassMatrix = self.MassMatrix.getCSRrepresentation()
+        if (self.limited_L2p_vof_mass_correction is None):
+            self.limited_L2p_vof_mass_correction = numpy.zeros(self.LumpedMassMatrix.size,'d')
+
+        self.mcorr.FCTStep(
+            self.nnz, #number of non zero entries 
+            len(rowptr)-1, #number of DOFs
+            self.LumpedMassMatrix, #Lumped mass matrix
+            self.L2p_vof_mass_correction, # high order projection
+            self.lumped_L2p_vof_mass_correction, #low order projection
+            self.limited_L2p_vof_mass_correction,
+            rowptr, #Row indices for Sparsity Pattern (convenient for DOF loops)
+            colind, #Column indices for Sparsity Pattern (convenient for DOF loops)
+            MassMatrix)        
+    
     def calculateCoefficients(self):
         pass
     def calculateElementResidual(self):
@@ -621,6 +643,10 @@ class LevelModel(proteus.Transport.OneLevelTransport):
                                                            self.MassMatrix_a,
                                                            colind,
                                                            rowptr)
+            # Lumped mass matrix
+            self.LumpedMassMatrix = numpy.zeros(rowptr.size-1,'d')
+        else:
+            self.LumpedMassMatrix.fill(0.0)
 
         cfemIntegrals.zeroJacobian_CSR(self.nNonzerosInJacobian,
                                        self.MassMatrix)
@@ -658,7 +684,8 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.coefficients.q_H_vof,
             self.coefficients.q_porosity,
             self.csrRowIndeces[(0,0)],self.csrColumnOffsets[(0,0)],
-            self.MassMatrix)
+            self.MassMatrix, 
+            self.LumpedMassMatrix)
 
     def getJacobian(self,jacobian):
         cfemIntegrals.zeroJacobian_CSR(self.nNonzerosInJacobian,jacobian)
@@ -995,6 +1022,8 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         #Set rhs of mass correction to zero
         if self.rhs_mass_correction is None:
             self.rhs_mass_correction = numpy.zeros(self.coefficients.vofModel.u[0].dof.shape,'d')
+            self.lumped_L2p_vof_mass_correction = numpy.zeros(self.coefficients.vofModel.u[0].dof.shape,'d')
+            self.L2p_vof_mass_correction = numpy.zeros(self.coefficients.vofModel.u[0].dof.shape,'d')
         else: 
             self.rhs_mass_correction.fill(0.0)
 
@@ -1045,9 +1074,13 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.mesh.exteriorElementBoundariesArray,
             self.mesh.elementBoundaryElementsArray,
             self.mesh.elementBoundaryLocalElementBoundariesArray,
-            self.rhs_mass_correction) # (MQL): compute rhs for L2 projection
+            self.rhs_mass_correction, # (MQL): compute rhs for L2 projection
+            self.lumped_L2p_vof_mass_correction, 
+            self.LumpedMassMatrix,
+            self.lumped_L2p_vof_mass_correction.size)
             #self.coefficients.vofModel.u[0].dof)
         #self.coefficients.q_H_vof.flat[:]=777.0
+
     def calculateSolutionAtQuadrature(self):
         pass
     def updateAfterMeshMotion(self):

@@ -2661,7 +2661,7 @@ namespace proteus
 	      //((un-unm1)/dt + vn[0]*grad_un[0] + vn[1]*grad_un[1] + un*(vn[0]+vn[1]))*DENTROPY(un,uL,uR);
 	      double entropy_residual = (vn[0]*grad_un[0] + vn[1]*grad_un[1] + (vn[0]+vn[1])*un);
 	      double DENTROPY_un = DENTROPY(un,uL,uR);
-	      double m_t = alphaBDF*u + q_m_betaBDF[eN_k];
+	      //double m_t = alphaBDF*u + q_m_betaBDF[eN_k];
 	      //////////////
 	      // ith-LOOP //
 	      //////////////	      
@@ -2676,8 +2676,8 @@ namespace proteus
 		  //elementEntResVector[i] += entropy_residual*u_test_dV[i];
 
 		  element_lumped_mass_matrix[i] += u_test_dV[i];
-		  //elementResidual_u[i] += (u-un)*u_test_dV[i];		  
-		  elementResidual_u[i] += dt*m_t*u_test_dV[i];
+		  elementResidual_u[i] += (u-un)*u_test_dV[i];		  
+		  //elementResidual_u[i] += dt*m_t*u_test_dV[i];
 		  
 		  ///////////////
 		  // j-th LOOP // To construct transport matrices

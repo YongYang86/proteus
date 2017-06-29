@@ -6,6 +6,15 @@ from proteus.Transport import OneLevelTransport
 
 cdef extern from "MCorr.h" namespace "proteus":
     cdef cppclass MCorr_base:
+        void FCTStep(int NNZ,
+		     int numDOFs,
+		     double* lumped_mass_matrix, 
+		     double* solH, 
+		     double* solL,
+		     double* limited_solution, 
+		     int* csrRowIndeces_DofLoops, 
+		     int* csrColumnOffsets_DofLoops, 
+		     double* MassMatrix)
         void calculateResidual(double* mesh_trial_ref,
 				       double* mesh_grad_trial_ref,
                                        double* mesh_dof,
@@ -82,7 +91,8 @@ cdef extern from "MCorr.h" namespace "proteus":
                                        double* q_H,
 				       double* q_porosity,
                                        int* csrRowIndeces_u_u,int* csrColumnOffsets_u_u,
-                                       double* globalMassMatrix)
+                                       double* globalMassMatrix, 
+				       double* globalLumpedMassMatrix)
         void calculateJacobian(double* mesh_trial_ref,
                                        double* mesh_grad_trial_ref,
                                        double* mesh_dof,
@@ -346,7 +356,10 @@ cdef extern from "MCorr.h" namespace "proteus":
 				   int* exteriorElementBoundariesArray,
 				   int* elementBoundaryElementsArray,
 				   int* elementBoundaryLocalElementBoundariesArray,
-                               double* rhs_mass_correction)
+                               	   double* rhs_mass_correction,
+                               	   double* lumped_L2p_vof_mass_correction, 
+				   double* lumped_mass_matrix,
+				   int numDOFs)	
     MCorr_base* newMCorr(int nSpaceIn,
                        int nQuadraturePoints_elementIn,
                        int nDOF_mesh_trial_elementIn,
@@ -374,6 +387,25 @@ cdef class cMCorr_base:
                               CompKernelFlag)
    def __dealloc__(self):
        del self.thisptr
+   def FCTStep(self, 
+               int NNZ,
+	       int numDOFs,
+	       numpy.ndarray lumped_mass_matrix, 
+	       numpy.ndarray solH, 
+	       numpy.ndarray solL,
+	       numpy.ndarray limited_solution, 
+	       numpy.ndarray csrRowIndeces_DofLoops, 
+	       numpy.ndarray csrColumnOffsets_DofLoops, 
+	       numpy.ndarray MassMatrix):
+       self.thisptr.FCTStep(NNZ,
+	                    numDOFs,
+			    <double*> lumped_mass_matrix.data, 
+			    <double*> solH.data,
+			    <double*> solL.data,
+			    <double*> limited_solution.data,
+			    <int*> csrRowIndeces_DofLoops.data,
+			    <int*> csrColumnOffsets_DofLoops.data,
+			    <double*> MassMatrix.data)
    def calculateResidual(self,
                          numpy.ndarray mesh_trial_ref,
                          numpy.ndarray mesh_grad_trial_ref,
@@ -499,7 +531,8 @@ cdef class cMCorr_base:
 			 numpy.ndarray q_porosity,
                          numpy.ndarray csrRowIndeces_u_u,
                          numpy.ndarray csrColumnOffsets_u_u,
-                         globalMassMatrix):
+                         globalMassMatrix, 
+			 numpy.ndarray globalLumpedMassMatrix):
        cdef numpy.ndarray rowptr,colind,globalMassMatrix_a
        (rowptr,colind,globalMassMatrix_a) = globalMassMatrix.getCSRrepresentation()
        self.thisptr.calculateMassMatrix(<double*> mesh_trial_ref.data,
@@ -535,7 +568,8 @@ cdef class cMCorr_base:
 				       <double*> q_porosity.data,
                                        <int*> csrRowIndeces_u_u.data,
                                        <int*> csrColumnOffsets_u_u.data,
-                                       <double*> globalMassMatrix_a.data)
+                                       <double*> globalMassMatrix_a.data, 
+				       <double*> globalLumpedMassMatrix.data)
    def calculateJacobian(self,
                          numpy.ndarray mesh_trial_ref,
                          numpy.ndarray mesh_grad_trial_ref,
@@ -1039,7 +1073,10 @@ cdef class cMCorr_base:
                          numpy.ndarray exteriorElementBoundariesArray,
                          numpy.ndarray elementBoundaryElementsArray,
                          numpy.ndarray elementBoundaryLocalElementBoundariesArray,
-                         numpy.ndarray rhs_mass_correction):
+                         numpy.ndarray rhs_mass_correction,
+                         numpy.ndarray lumped_L2p_vof_mass_correction, 
+			 numpy.ndarray lumped_mass_matrix, 
+			 int numDOFs):
        self.thisptr.setMassQuadrature(<double*> mesh_trial_ref.data,
                                        <double*> mesh_grad_trial_ref.data,
                                        <double*> mesh_dof.data,
@@ -1085,4 +1122,7 @@ cdef class cMCorr_base:
                                        <int*> exteriorElementBoundariesArray.data,
                                        <int*> elementBoundaryElementsArray.data,
                                        <int*> elementBoundaryLocalElementBoundariesArray.data,
-                                       <double*> rhs_mass_correction.data)
+                                       <double*> rhs_mass_correction.data,
+                                       <double*> lumped_L2p_vof_mass_correction.data, 
+                                       <double*> lumped_mass_matrix.data, 
+				       numDOFs)
