@@ -374,7 +374,9 @@ class BC_RANS(BC_Base):
                                  vert_axis=None, air=1., water=0.,
                                  kInflow=None, dissipationInflow=None,
                                  kInflowAir=None, dissipationInflowAir=None,
-                                 rampTime=None, tInRamp=None):
+                                 rampTime=None, tInRamp=None,
+                                 rampTime2=None, tInRamp2=None,
+                                 U2=None):
         """
         Imposes a velocity profile lower than the sea level and an open
         boundary for higher than the sealevel.
@@ -426,6 +428,7 @@ class BC_RANS(BC_Base):
             
         U = np.array(U)
         Uwind = np.array(Uwind)
+        if U2: U2 = np.array(U2)
             
         def get_inlet_ux_dirichlet(i):
             def ux_dirichlet(x, t):
@@ -436,12 +439,15 @@ class BC_RANS(BC_Base):
                     H = smoothedHeaviside(smoothing/2., phi-smoothing/2.)
                 else:
                     H = 1.0
-                u =  H*Uwind[i] + (1-H)*U[i] 
+                u =  H*Uwind[i] + (1-H)*U[i]
+                if U2: u2 = H*Uwind[i] + (1-H)*U2[i]
                 if rampTime:
                     if t < tInRamp:
                         u = 0.
-                    else:
+                    elif t < (tInRamp + rampTime):
                         u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
+                    elif t > tInRamp2:
+                        u = u2*min( (t-tInRamp2)/rampTime2, 1.0) + u
                 return u
             return ux_dirichlet
 
@@ -465,12 +471,15 @@ class BC_RANS(BC_Base):
                 H = smoothedHeaviside(smoothing/2., phi-smoothing/2.)
             else:
                 H = 1.0
-            u =  H*Uwind + (1-H)*U 
+            u =  H*Uwind + (1-H)*U
+            if U2: u2 = H*Uwind[i] + (1-H)*U2[i]
             if rampTime:
                 if t < tInRamp:
                     u = 0.
-                else:
+                elif t < (tInRamp + rampTime):
                     u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
+                elif t > tInRamp2:
+                    u = u2*min( (t-tInRamp2)/rampTime2, 1.0) + u
             # This is the normal velocity, based on the inwards boundary
             # orientation -b_or
             u_p = np.sum(u*np.abs(b_or)) 
@@ -513,7 +522,9 @@ class BC_RANS(BC_Base):
     def setHydrostaticPressureOutletWithDepth(self, seaLevel, rhoUp, rhoDown, g,
                                               refLevel, smoothing, U=None, Uwind=None,
                                               pRef=0.0, vert_axis=None,
-                                              air=1.0, water=0.0, rampTime=None, tInRamp=None):
+                                              air=1.0, water=0.0, rampTime=None, tInRamp=None,
+                                              rampTime2=None, tInRamp2=None,
+                                              U2=None):
         """
         Returns the pressure and vof profile based on the known depth.
         If the boundary is aligned with one of the main axes, sets the tangential
@@ -595,14 +606,16 @@ class BC_RANS(BC_Base):
                     else:
                         H = 1.0
                     u = H*Uwind[i] + (1-H)*U[i]
+                    if U2:
+                        U2 = np.array(U2)
+                        u2 = H*Uwind[i] + (1-H)*U2[i]
                     if rampTime:
                         if t < tInRamp:
-                            u = 0.0
-                        else:
+                            u = 0.
+                        elif t < (tInRamp + rampTime):
                             u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
-                    return u
-                return ux_dirichlet
-
+                        elif t > tInRamp2:
+                            u = u2*min( (t-tInRamp2)/rampTime2, 1.0) + u
             if Uwind is None:
                 Uwind = np.zeros(3)
             U = np.array(U)
