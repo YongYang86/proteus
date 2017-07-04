@@ -447,7 +447,7 @@ class BC_RANS(BC_Base):
                     elif t < (tInRamp + rampTime):
                         u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
                     elif t > tInRamp2:
-                        u = u2*min( (t-tInRamp2)/rampTime2, 1.0) + u
+                        u = u2*min( (t-tInRamp2)/rampTime2, 1.0) 
                 return u
             return ux_dirichlet
 
@@ -479,7 +479,7 @@ class BC_RANS(BC_Base):
                 elif t < (tInRamp + rampTime):
                     u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
                 elif t > tInRamp2:
-                    u = u2*min( (t-tInRamp2)/rampTime2, 1.0) + u
+                    u = u2*min( (t-tInRamp2)/rampTime2, 1.0) 
             # This is the normal velocity, based on the inwards boundary
             # orientation -b_or
             u_p = np.sum(u*np.abs(b_or)) 
@@ -613,7 +613,7 @@ class BC_RANS(BC_Base):
                         elif t < (tInRamp + rampTime):
                             u = u*min( (t-tInRamp)/rampTime  ,  1.0 )
                         elif t > tInRamp2:
-                            u = u2*min( (t-tInRamp2)/rampTime2, 1.0) + u
+                            u = u2*min( (t-tInRamp2)/rampTime2, 1.0)
             U = np.array(U)
             if Uwind is not None: Uwind = np.array(Uwind)
             if U2 is not None: U2 = np.array(U2)
