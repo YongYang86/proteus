@@ -936,7 +936,7 @@ class NS_base:  # (HasTraits):
 
         # TMP to plot redistancing history
         #print ('Saving L2 norm history')
-        #redistancing_L2_norm_history = numpy.array(self.modelList[-1].levelModelList[-1].redistancing_L2_norm_history)
+        #redistancing_L2_norm_history = numpy.array(self.modelList[0].levelModelList[0].redistancing_L2_norm_history)
         #numpy.savetxt('redistancing_L2_norm_history.txt', redistancing_L2_norm_history, delimiter=', ')
 
         return systemStepFailed
