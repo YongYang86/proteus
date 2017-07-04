@@ -778,7 +778,7 @@ class ExplicitConsistentMassMatrixForVOF(Newton):
         ############
         # FCT STEP #
         ############ 
-        #self.F.FCTStep()
+        self.F.FCTStep()
         ###########################################
         # DISTRIBUTE SOLUTION FROM u to u[ci].dof #
         ###########################################
