@@ -740,8 +740,12 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
                     self.linearSolverFailed = self.linearSolver.failed()
                 u-=self.du
                 self.F.L2_norm_redistancing = self.F.getRedistancingResidual(u,r)
-                self.F.redistancing_L2_norm_history.append((self.F.timeIntegration.t,self.F.L2_norm_redistancing))
-                numIter += 1        
+                numIter += 1
+            #self.F.redistancing_L2_norm_history.append(
+            #    (self.F.timeIntegration.t,
+            #     numIter,
+            #     self.F.L2_norm_redistancing, 
+            #     self.F.coefficients.redistancing_tolerance*self.F.mesh.h))
         logEvent("***** Re-distancing finished. Number of iterations = "+str(numIter)
                  + ". L2 norm of error: "+str(self.F.L2_norm_redistancing)
                  + ". Tolerance: "+str(self.F.coefficients.redistancing_tolerance*self.F.mesh.h)
