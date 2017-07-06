@@ -2366,7 +2366,7 @@ namespace proteus
 	  //{
 	  //  elementTransport[i][j] = preconditioned_elementTransport[i][j];
 	  //  elementTransposeTransport[i][j] = preconditioned_elementTransport[j][i];
-	  //}	      
+	  //}
 	  //}
 	  
 	  /////////////////
@@ -2529,17 +2529,17 @@ namespace proteus
 		  // first-order dissipative operator
 		  dLij = std::max(fabs(TransportMatrix[ij]),fabs(TransposeTransportMatrix[ij]));
 		  // weight low-order dissipative matrix to make it higher order
-		  dLij *= fmax(psi[i],psi[j]); 
+		  //dLij *= fmax(psi[i],psi[j]); 
 		  // high-order (entropy viscosity) dissipative operator 		  
 		  //double one_over_entNormFactorj = etaMax[j] == etaMin[j] ? 0. : 1./(etaMax[j]-etaMin[j]);
 		  double one_over_entNormFactorj = 2./(etaMax[j]-etaMin[j]+1E-15);
 		  double dEVij = fmax(std::abs(global_entropy_residual[i])*one_over_entNormFactori,
 				      std::abs(global_entropy_residual[j])*one_over_entNormFactorj);
 		  //dissipative terms
-		  ith_dissipative_term += fmin(dLij,cE*dEVij)*(solnj-solni);
-		  //ith_dissipative_term += dLij*(solnj-solni);
-		  dLii -= fmin(dLij,cE*dEVij);
-		  //dLii -= dLij;
+		  //ith_dissipative_term += fmin(dLij,cE*dEVij)*(solnj-solni);
+		  ith_dissipative_term += dLij*(solnj-solni);
+		  //dLii -= fmin(dLij,cE*dEVij);
+		  dLii -= dLij;
 		}
 	      //update ij
 	      ij+=1;

@@ -649,8 +649,8 @@ class ExplicitConsistentMassMatrixWithRedistancing(Newton):
     if you give it the right Jacobian
     """
     def solve(self,u,r=None,b=None,par_u=None,par_r=None):
-        doSmoothing = True
-        doRedistancing = True
+        doSmoothing = False
+        doRedistancing = False
 
         if (doSmoothing):
             self.F.getRhsSmoothing(u,r)

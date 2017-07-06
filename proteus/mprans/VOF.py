@@ -816,7 +816,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
         self.min_u_bc=None
         self.max_u_bc=None
         # Aux quantity at DOFs to be filled by optimized code (MQL)
-        self.quantDOFs=None
+        self.quantDOFss=None
 
         comm = Comm.get()
         self.comm=comm
@@ -1080,7 +1080,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
                                                                           self.cterm_transpose[d],
                                                                           self.cterm_global_transpose[d])
 
-                self.quantDOFs = numpy.zeros(self.u[0].dof.shape,'d')
+                self.quantDOFss = numpy.zeros(self.u[0].dof.shape,'d')
         rowptr, colind, Cx = self.cterm_global[0].getCSRrepresentation()
         rowptr, colind, Cy = self.cterm_global[1].getCSRrepresentation()
         rowptr, colind, CTx = self.cterm_global_transpose[0].getCSRrepresentation()
@@ -1236,7 +1236,7 @@ class LevelModel(proteus.Transport.OneLevelTransport):
             self.dt_times_dC_minus_dL, 
             self.min_u_bc,
             self.max_u_bc,
-            self.quantDOFs)
+            self.quantDOFss)
         
         if self.forceStrongConditions:#
             for dofN,g in self.dirichletConditionsForceDOF.DOFBoundaryConditionsDict.iteritems():

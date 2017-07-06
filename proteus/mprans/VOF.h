@@ -2935,11 +2935,11 @@ namespace proteus
 	      alpha_numi = fabs(alpha_numerator_pos[i] + alpha_numerator_neg[i]);
 	      alpha_deni = alpha_denominator_pos[i] + alpha_denominator_neg[i];
 	    }
-	  double g = std::sqrt(std::pow(gx[i],2)+std::pow(gy[i],2));
-	  if (g <= alpha_num_threshold) // Extrema and const state
-	    alphai = 1.;
-	  else 
-	    alphai = alpha_numi/(alpha_deni+1E-15);
+	  //double g = std::sqrt(std::pow(gx[i],2)+std::pow(gy[i],2));
+	  //if (g <= alpha_num_threshold) // Extrema and const state
+	  //alphai = 1.;
+	  //else 
+	  alphai = alpha_numi/(alpha_deni+1E-15);
 	  quantDOFs[i] = alphai; 
 
 	  if (POWER_SMOOTHNESS_INDICATOR==0)
@@ -2972,8 +2972,25 @@ namespace proteus
 	      if (i != j) //NOTE: there is really no need to check for i!=j (see formula for ith_dissipative_term)
 		{
 		  // first-order dissipative operator
-		  dLij = std::max(fabs(TransportMatrix[ij]),fabs(TransposeTransportMatrix[ij]));
+		  //dLij = std::max(psi[i]*fabs(TransportMatrix[ij]),
+		  //	  psi[j]*fabs(TransposeTransportMatrix[ij]));
+
+		  //std::cout << TransportMatrix[ij] 
+		  //    << "\t" 
+		  //    << TransposeTransportMatrix[ij] 
+		  //    << std::endl;
+		  //abort();
+		  //dLij = fmax(0.,fmax(-psi[i]*TransportMatrix[ij],
+		  //	      -psi[j]*TransposeTransportMatrix[ij]));
+		  //dLij = fmax(0.,fmax(psi[i]*TransportMatrix[ij],
+		  //	      psi[j]*TransposeTransportMatrix[ij]));
+
+		  dLij = fmax(0.,fmax(TransportMatrix[ij],
+				      TransposeTransportMatrix[ij]));
+
 		  // weight low-order dissipative matrix to make it higher order
+		  //dLij = std::max(fabs(TransportMatrix[ij]),
+		  //	  fabs(TransposeTransportMatrix[ij]));
 		  dLij *= std::max(psi[i],psi[j]); 
 		  // high-order (entropy viscosity) dissipative operator 
 		  double one_over_entNormFactorj = 1./(etaMax[j]-etaMin[j]+1E-15);
@@ -2987,7 +3004,8 @@ namespace proteus
 		  else
 		    dCij = fmin(dLij,cE*dEVij) * fmax(1.0-Compij,0.0);
 		  //dissipative terms
-		  ith_dissipative_term += dCij*(solnj-solni);
+		  //ith_dissipative_term += dCij*(solnj-solni);
+		  ith_dissipative_term += dLij*(solnj-solni);
 		  ith_low_order_dissipative_term += dLij*(solnj-solni);
 		  //dLij - dCij. This matrix is needed during FCT step
 		  dt_times_dC_minus_dL[ij] = dt*(dCij - dLij);
