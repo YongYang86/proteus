@@ -100,7 +100,12 @@ class Coefficients(proteus.TransportCoefficients.TC_base):
         pass
     def initializeMesh(self,mesh):
         self.mesh = mesh
+        self.has_detJ=False
+        self.detJ_save = np.ones(mesh.nElements_global,'d')
     def postStep(self,t,firstStep=False):
+        if not self.has_detJ0:
+            self.detJ0 = self.detJ_last.copy()
+            self.has_detJ0=True
     	self.model.postStep()
         self.mesh.nodeArray[:,0]+=self.model.u[0].dof
         self.mesh.nodeVelocityArray[:,0]=self.model.u[0].dof

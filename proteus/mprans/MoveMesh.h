@@ -12,6 +12,7 @@ namespace proteus
   public:
     virtual ~MoveMesh_base(){}
     virtual void calculateResidual(//element
+				   double* save_JacDEt,
 			   double* mesh_trial_ref,
 			   double* mesh_grad_trial_ref,
 			   double* mesh_dof,
@@ -477,6 +478,7 @@ namespace proteus
 					  jacDet,
 					  jacInv,
 					  x,y,z);
+	      save_jacDet[eN] = jacDet; 
 	      //get the physical integration weight
 	      dV = fabs(jacDet)*dV_ref[k];
 	      ck.calculateG(jacInv,G,G_dd_G,tr_G);
