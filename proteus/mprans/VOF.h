@@ -89,6 +89,9 @@ namespace proteus
 				   double* u_dof_old,
 				   double* u_dof_old_old,
 				   double* velocity,
+				   double* velx_dof,
+				   double* vely_dof,
+				   double* velz_dof,
 				   double* q_m,
 				   double* q_u,
 				   double* q_m_betaBDF,
@@ -187,6 +190,9 @@ namespace proteus
 				   double* u_dof_old,
 				   double* u_dof_old_old,
 				   double* velocity,
+				   double* velx_dof,
+				   double* vely_dof,
+				   double* velz_dof,			     
 				   double* q_m,
 				   double* q_u,
 				   double* q_m_betaBDF,
@@ -701,6 +707,9 @@ namespace proteus
 			   double* u_dof_old,
 			   double* u_dof_old_old,
 			   double* velocity,
+			   double* velx_dof,
+			   double* vely_dof,
+			   double* velz_dof,				   
 			   double* q_m,
 			   double* q_u,
 			   double* q_m_betaBDF,
@@ -2155,309 +2164,6 @@ namespace proteus
       // END OF COMPUTING AUX QUANTITIES OF INTEREST //
       /////////////////////////////////////////////////
     }
-
-    /*
-    /////////////////// TMP
-    void calculateResidual(//element
-			   double* mesh_trial_ref,
-			   double* mesh_grad_trial_ref,
-			   double* mesh_dof,
-			   double* mesh_velocity_dof,
-			   double MOVING_DOMAIN,
-			   int* mesh_l2g,
-			   double* dV_ref,
-			   double* u_trial_ref,
-			   double* u_grad_trial_ref,
-			   double* u_test_ref,
-			   double* u_grad_test_ref,
-			   //element boundary
-			   double* mesh_trial_trace_ref,
-			   double* mesh_grad_trial_trace_ref,
-			   double* dS_ref,
-			   double* u_trial_trace_ref,
-			   double* u_grad_trial_trace_ref,
-			   double* u_test_trace_ref,
-			   double* u_grad_test_trace_ref,
-			   double* normal_ref,
-			   double* boundaryJac_ref,
-			   //physics
-			   int nElements_global,
-			   double useMetrics, 
-			   double alphaBDF,
-			   int lag_shockCapturing, 
-			   double shockCapturingDiffusion,
-			   double sc_uref, double sc_alpha,
-			   //VRANS
-			   const double* q_porosity,
-			   //
-			   int* u_l2g, 
-			   double* elementDiameter,
-			   int degree_polynomial,
-			   double* u_dof,
-			   double* u_dof_lstage,
-			   double* u_dof_old,
-			   double* u_dof_old_old,
-			   double* velocity,
-			   double* q_m,
-			   double* q_u,
-			   double* q_m_betaBDF,
-                           double* q_dV,
-                           double* q_dV_last,
-			   double* cfl,
-			   double* edge_based_cfl,
-			   double* q_numDiff_u, 
-			   double* q_numDiff_u_last, 
-			   int offset_u, int stride_u, 
-			   double* globalResidual,
-			   int nExteriorElementBoundaries_global,
-			   int* exteriorElementBoundariesArray,
-			   int* elementBoundaryElementsArray,
-			   int* elementBoundaryLocalElementBoundariesArray,
-			   double* ebqe_velocity_ext,
-			   //VRANS
-			   const double* ebqe_porosity_ext,
-			   //
-			   int* isDOFBoundary_u,
-			   double* ebqe_bc_u_ext,
-			   int* isFluxBoundary_u,
-			   double* ebqe_bc_flux_u_ext,
-			   double* ebqe_phi,double epsFact,
-			   double* ebqe_u,
-			   double* ebqe_flux,
-			   // PARAMETERS FOR EDGE BASED STABILIZATION
-			   int EDGE_VISCOSITY, 
-			   int ENTROPY_VISCOSITY, 
-			   double cE,
-			   double cMax, 
-			   double cK,
-			   // PARAMETERS FOR LOG BASED ENTROPY FUNCTION 
-			   double uL, 
-			   double uR,
-			   // PARAMETERS FOR EDGE VISCOSITY 
-			   int numDOFs,
-			   int NNZ,
-			   int* csrRowIndeces_DofLoops,
-			   int* csrColumnOffsets_DofLoops,
-			   int* csrRowIndeces_CellLoops,
-			   int* csrColumnOffsets_CellLoops,
-			   int* csrColumnOffsets_eb_CellLoops,
-			   // C matrices
-			   double* Cx, 
-			   double* Cy, 
-			   double* CTx,
-			   double* CTy, 
-			   // PARAMETERS FOR 1st or 2nd ORDER MPP METHOD
-			   int LUMPED_MASS_MATRIX, 
-			   // FOR FCT
-			   double* low_order_solution,
-			   double* dt_times_dC_minus_dL,
-			   double* min_u_bc,
-			   double* max_u_bc,
-			   // AUX QUANTITIES OF INTEREST 
-			   double* quantDOFs)
-    {
-      double dt = 1./alphaBDF; // HACKED to work just for BDF1
-      // ** COMPUTE QUANTITIES PER CELL (MQL) ** //
-      double entropy_max=-1.E10, entropy_min=1.E10, cell_entropy_mean, cell_volume, volume=0, entropy_mean=0;
-      double cell_vel_max, cell_entropy_residual;
-      double entropy_residual[nElements_global], vel_max[nElements_global];
-      double entropy_normalization_factor=1.0;	  
-      for(int eN=0;eN<nElements_global;eN++)
-	{
-	  cell_volume = 0;
-	  cell_entropy_mean = 0;
-	  cell_vel_max = 0;
-	  cell_entropy_residual = 0;
-	  //loop over quadrature points and compute integrands
-	  for  (int k=0;k<nQuadraturePoints_element;k++)
-	    {
-	      //compute indeces and declare local storage
-	      register int eN_k = eN*nQuadraturePoints_element+k,
-		eN_k_nSpace = eN_k*nSpace,
-		eN_nDOF_trial_element = eN*nDOF_trial_element;
-	      register double un=0.0,unm1=0, grad_un[nSpace], vn[nSpace],
-		jac[nSpace*nSpace],jacDet,jacInv[nSpace*nSpace],
-		u_grad_trial[nDOF_trial_element*nSpace],
-		dV,x,y,z,
-		porosity=q_porosity[eN_k];
-	      ck.calculateMapping_element(eN,k,mesh_dof,mesh_l2g,mesh_trial_ref,mesh_grad_trial_ref,jac,jacDet,jacInv,x,y,z);
-	      //get the physical integration weight
-	      dV = fabs(jacDet)*dV_ref[k];
-	      //get the trial function gradients
-	      ck.gradTrialFromRef(&u_grad_trial_ref[k*nDOF_trial_element*nSpace],jacInv,u_grad_trial);
-	      //get the solution at quad point at tn and tnm1
-	      ck.valFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],un);
-	      ck.valFromDOF(u_dof_old_old,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],unm1);
-	      //get the solution gradients at tn
-	      ck.gradFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],u_grad_trial,grad_un);
-	      //velocity at tn
-	      vn[0] = velocity[eN_k_nSpace];
-	      vn[1] = velocity[eN_k_nSpace+1];
-	      // compute entropy min and max
-	      entropy_max = std::max(entropy_max,ENTROPY(un,uL,uR));
-	      entropy_min = std::min(entropy_min,ENTROPY(un,uL,uR));
-	      cell_entropy_mean += ENTROPY(un,uL,uR)*dV;
-	      cell_volume += dV;
-	      cell_vel_max = std::max(cell_vel_max,std::max(std::abs(vn[0]),std::abs(vn[1])));
-	      cell_entropy_residual 
-		= std::max(std::abs((ENTROPY(un,uL,uR) - ENTROPY(unm1,uL,uR))/dt
-				    + vn[0]*ENTROPY_GRAD(un,grad_un[0],uL,uR)+vn[1]*ENTROPY_GRAD(un,grad_un[1],uL,uR) 
-				    + ENTROPY(un,uL,uR)*(vn[0]+vn[1])),cell_entropy_residual);
-	    }
-	  volume += cell_volume;
-	  entropy_mean += cell_entropy_mean;
-	  vel_max[eN]=cell_vel_max;
-	  entropy_residual[eN] = cell_entropy_residual;
-	}//elements
-      entropy_mean /= volume;
-      // ** END OF CELL COMPUTATIONS (MQL) ** //
-      entropy_normalization_factor = std::max(std::abs(entropy_max-entropy_mean),
-					      std::abs(entropy_min-entropy_mean));
-      
-      double Ct_sge = 4.0;	  
-      //loop over elements to compute volume integrals and load them into element and global residual
-      for(int eN=0;eN<nElements_global;eN++)
-	{
-	  //declare local storage for element residual and initialize
-	  register double elementResidual_u[nDOF_test_element];
-	  for (int i=0;i<nDOF_test_element;i++)
-	    elementResidual_u[i]=0.0;
-	  //loop over quadrature points and compute integrands
-	  for  (int k=0;k<nQuadraturePoints_element;k++)
-	    {
-	      //compute indeces and declare local storage
-	      register int eN_k = eN*nQuadraturePoints_element+k,
-		eN_k_nSpace = eN_k*nSpace,
-		eN_nDOF_trial_element = eN*nDOF_trial_element;
-	      register double u=0.0, un=0.0, u_star=0.0, grad_u[nSpace], grad_un[nSpace], grad_u_star[nSpace],
-		m_star=0.0, dm_star=0.0, m=0.0, dm=0.0, 
-		f_star[nSpace], df_star[nSpace], f[nSpace], df[nSpace],
-		m_t=0.0,dm_t=0.0,
-		pdeResidual_u_star=0.0,
-		Lstar_u[nDOF_test_element],
-		subgridError_u=0.0,
-		tau=0.0,tau0=0.0,tau1=0.0,
-		numDiff0=0.0,numDiff1=0.0,
-		jac[nSpace*nSpace],
-		jacDet,
-		jacInv[nSpace*nSpace],
-		u_grad_trial[nDOF_trial_element*nSpace],
-		u_test_dV[nDOF_trial_element],
-		u_grad_test_dV[nDOF_test_element*nSpace],
-		dV,x,y,z,xt,yt,zt,
-		//VRANS
-		porosity,
-		//
-		G[nSpace*nSpace],G_dd_G,tr_G;//norm_Rv;
-	      
-	      ck.calculateMapping_element(eN,
-					  k,
-					  mesh_dof,
-					  mesh_l2g,
-					  mesh_trial_ref,
-					  mesh_grad_trial_ref,
-					  jac,
-					  jacDet,
-					  jacInv,
-					  x,y,z);
-	      //get the physical integration weight
-	      dV = fabs(jacDet)*dV_ref[k];
-	      ck.calculateG(jacInv,G,G_dd_G,tr_G);
-	      //get the trial function gradients
-	      ck.gradTrialFromRef(&u_grad_trial_ref[k*nDOF_trial_element*nSpace],jacInv,u_grad_trial);
-	      //get the solution
-	      ck.valFromDOF(u_dof,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],u);
-	      ck.valFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],&u_trial_ref[k*nDOF_trial_element],un);
-	      //get the solution gradients
-	      ck.gradFromDOF(u_dof,&u_l2g[eN_nDOF_trial_element],u_grad_trial,grad_u);
-	      ck.gradFromDOF(u_dof_old,&u_l2g[eN_nDOF_trial_element],u_grad_trial,grad_un);
-	      //precalculate test function products with integration weights
-	      for (int j=0;j<nDOF_trial_element;j++)
-		{
-		  u_test_dV[j] = u_test_ref[k*nDOF_trial_element+j]*dV;
-		  for (int I=0;I<nSpace;I++)
-		    {
-		      u_grad_test_dV[j*nSpace+I] = u_grad_trial[j*nSpace+I]*dV;//cek warning won't work for Petrov-Galerkin
-		    }
-		}
-	      //VRANS
-	      porosity = q_porosity[eN_k];
-	      // COMPUTE u and u_grad star to allow easy change between BACKWARD OR FORWARD EULER (for transport)
-	      u_star = un;
-	      grad_u_star[0] = grad_un[0];
-	      grad_u_star[1] = grad_un[1];
-	      //
-	      //calculate pde coefficients at quadrature points
-	      //calculate pde coefficients at quadrature points
-	      //
-	      evaluateCoefficients(&velocity[eN_k_nSpace],
-				   un,
-				   //VRANS
-				   porosity,
-				   //
-				   m_star,
-				   dm_star,
-				   f_star,
-				   df_star);
-	      evaluateCoefficients(&velocity[eN_k_nSpace],
-				   u,
-				   //VRANS
-				   porosity,
-				   //
-				   m,
-				   dm,
-				   f,
-				   df);
-	      //calculate time derivative at quadrature points
-	      if (q_dV_last[eN_k] <= -100)
-		q_dV_last[eN_k] = dV;
-	      q_dV[eN_k] = dV;
-
-	      ck.bdf(alphaBDF,
-		     q_m_betaBDF[eN_k]*q_dV_last[eN_k]/dV,//ensure prior mass integral is correct for  m_t with BDF1
-		     m,
-		     dm,
-		     m_t,
-		     dm_t);
-
-	      //double aux = q_m_betaBDF[eN_k];
-	      //if (fabs(-un - dt*aux) != 0)
-	      //std::cout << fabs(-un - dt*aux) << std::endl;
-
-	      //mt =alpha*m + beta;	      
-	      // ENTROPY VISCOSITY //
-	      double h=elementDiameter[eN]/degree_polynomial;
-	      // CALCULATE CFL //
-	      calculateCFL(h,df_star,cfl[eN_k]); // TODO: ADJUST SPEED IF MESH IS MOVING
-	      // ** LINEAR DIFFUSION (MQL) ** //
-	      double linear_viscosity = cMax*h*vel_max[eN]; // Cell based
-	      // ** ENTROPY VISCOSITY (MQL) ** //
-	      double entropy_viscosity = cE*h*h*entropy_residual[eN]/entropy_normalization_factor;
-	      q_numDiff_u[eN_k] = std::min(linear_viscosity,entropy_viscosity);
-	      //update element residual 
-	      for(int i=0;i<nDOF_test_element;i++) 
-		{ 
-		  register int i_nSpace=i*nSpace;
-		  elementResidual_u[i] += 
-		    //(u-un)*u_test_dV[i] + 
-		    dt*m_t*u_test_dV[i] + 
-		    dt*ck.Advection_weak(f_star,&u_grad_test_dV[i_nSpace]) + 
-		    dt*ck.NumericalDiffusion(q_numDiff_u_last[eN_k],grad_un,&u_grad_test_dV[i_nSpace]); 
-		}//i
-	      //save solution for other models 
-	      q_u[eN_k] = u;
-	      q_m[eN_k] = m;
-	    }
-	  //load element into global residual and save element residual
-	  for(int i=0;i<nDOF_test_element;i++) 
-	    { 
-	      register int eN_i=eN*nDOF_test_element+i;
-	      globalResidual[offset_u+stride_u*u_l2g[eN_i]] += elementResidual_u[i];
-	    }//i
-	}//elements
-    }
-    /////////////////// END OF TMP
-    */
     
     void calculateResidual(//element
 			   double* mesh_trial_ref,
@@ -2499,6 +2205,9 @@ namespace proteus
 			   double* u_dof_old,
 			   double* u_dof_old_old,
 			   double* velocity,
+			   double* velx_dof,
+			   double* vely_dof,
+			   double* velz_dof,				   
 			   double* q_m,
 			   double* q_u,
 			   double* q_m_betaBDF,
@@ -2971,27 +2680,12 @@ namespace proteus
 	      ith_flux_term += TransportMatrix[ij]*solnj;
 	      if (i != j) //NOTE: there is really no need to check for i!=j (see formula for ith_dissipative_term)
 		{
-		  // first-order dissipative operator
-		  //dLij = std::max(psi[i]*fabs(TransportMatrix[ij]),
-		  //	  psi[j]*fabs(TransposeTransportMatrix[ij]));
-
-		  //std::cout << TransportMatrix[ij] 
-		  //    << "\t" 
-		  //    << TransposeTransportMatrix[ij] 
-		  //    << std::endl;
-		  //abort();
-		  //dLij = fmax(0.,fmax(-psi[i]*TransportMatrix[ij],
-		  //	      -psi[j]*TransposeTransportMatrix[ij]));
-		  //dLij = fmax(0.,fmax(psi[i]*TransportMatrix[ij],
-		  //	      psi[j]*TransposeTransportMatrix[ij]));
-
-		  dLij = fmax(0.,fmax(TransportMatrix[ij],
-				      TransposeTransportMatrix[ij]));
-
-		  // weight low-order dissipative matrix to make it higher order
-		  //dLij = std::max(fabs(TransportMatrix[ij]),
-		  //	  fabs(TransposeTransportMatrix[ij]));
-		  dLij *= std::max(psi[i],psi[j]); 
+		  if (cE>=1000) // NO ENTROPY VISCOSITY
+		    dLij = fmax(0.,fmax(psi[i]*TransportMatrix[ij],
+					psi[j]*TransposeTransportMatrix[ij]));
+		  else
+		    dLij = fmax(0.,fmax(TransportMatrix[ij],
+					TransposeTransportMatrix[ij]));
 		  // high-order (entropy viscosity) dissipative operator 
 		  double one_over_entNormFactorj = 1./(etaMax[j]-etaMin[j]+1E-15);
 		  double dEVij = fmax(fabs(global_entropy_residual[i])*one_over_entNormFactori,
@@ -2999,17 +2693,16 @@ namespace proteus
 		  // artificial compression
 		  double solij = 0.5*(solni+solnj);
 		  double Compij = cK*std::max(solij*(1.0-solij),0.0)/(std::abs(solni-solnj)+1E-14);
-		  if (cE>=1000)
+		  if (cE>=1000) // NO ENTROPY VISCOSITY 
 		    dCij = dLij * fmax(1.0-Compij,0.0);
 		  else
 		    dCij = fmin(dLij,cE*dEVij) * fmax(1.0-Compij,0.0);
 		  //dissipative terms
-		  //ith_dissipative_term += dCij*(solnj-solni);
-		  ith_dissipative_term += dLij*(solnj-solni);
+		  ith_dissipative_term += dCij*(solnj-solni);
 		  ith_low_order_dissipative_term += dLij*(solnj-solni);
 		  //dLij - dCij. This matrix is needed during FCT step
 		  dt_times_dC_minus_dL[ij] = dt*(dCij - dLij);
-		  dLii -= dLij;
+		  dLii -= dCij;
 		}
 	      else //i==j
 		{
