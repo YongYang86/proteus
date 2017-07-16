@@ -2805,14 +2805,14 @@ void updateDiffusion_weak_sd(int nElements_global,
    \f[ \int_{\Omega_e} \frac{\partial \bar{\mathbf{a}}}{\partial u}
    v_j \nabla \phi \cdot \nabla w_i dV = \int_{\Omega_r}
    \frac{\partial \bar{\mathbf{a}}}{\partial u} v_j \nabla \phi \cdot
-   \nabla w_i |J_e| d\hat{V} \approx \sum_k da_k \cdot (\nabla \phi
-   \otimes \nabla w dV)_{j,i} \f]
+   \nabla w_i |J_e| d\hat{V} \approx \sum_k v_j da_k \cdot (\nabla \phi
+   \otimes \nabla w_i dV)^T \f]
 
    \f[ \int_{\Omega_e} \bar{\mathbf{a}}\frac{\partial \phi}{\partial
    u} \nabla v_j \cdot \nabla w_i dV = \int_{\Omega_r}
    \bar{\mathbf{a}} \frac{\partial \phi}{\partial u} \nabla v_j \cdot
    \nabla w_i |J_e| d\hat{V} \approx \sum_k a_k dphi_{j} \cdot (\nabla
-   v \otimes \nabla w dV)_{j,i} \f]
+   v \otimes \nabla w_i dV)^T \f]
 
    \f[ dphi_j = dphi[l2g[e,j]] \f]
 */
